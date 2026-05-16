@@ -1,0 +1,840 @@
+using Ffvi.SaveTool;
+using Ffvi.SaveTool.Data;
+
+namespace Ffvi.SaveTool.Gui;
+
+public class MainForm : Form
+{
+    private SaveFile? _save;
+    private Character? _selectedCharacter;
+    private bool _suppressEvents;
+
+    private readonly ListBox _characterList = new() { Dock = DockStyle.Fill, IntegralHeight = true };
+    private readonly Panel _tabStrip = new() { Dock = DockStyle.Top, Height = 60, BackColor = SystemColors.Control };
+    private readonly Panel _tabContent = new() { Dock = DockStyle.Fill };
+    private readonly Dictionary<string, Panel> _tabPanels = new();
+    private readonly Dictionary<string, Button> _tabButtons = new();
+    private readonly StatusStrip _status = new();
+    private readonly ToolStripStatusLabel _statusLabel = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
+
+    private readonly NumericUpDown _gilBox = NumBox(0, 9_999_999);
+    private readonly NumericUpDown _totalGilBox = NumBox(0, 99_999_999);
+    private readonly NumericUpDown _stepsBox = NumBox(0, 99_999_999);
+
+    private readonly Dictionary<string, NumericUpDown> _statBoxes = new();
+    private readonly Dictionary<string, (Label baseLbl, NumericUpDown totalBox, Func<RawStats, int> baseFn)> _totalStats = new();
+    private readonly CheckedListBox _spellList = new() { Dock = DockStyle.Fill, CheckOnClick = true };
+    private readonly ToolTip _tooltip = new() { AutoPopDelay = 12000, InitialDelay = 400, ReshowDelay = 200, ShowAlways = true };
+    private readonly DataGridView _itemsGrid = new()
+    {
+        Dock = DockStyle.Fill,
+        AllowUserToAddRows = false,
+        AllowUserToDeleteRows = false,
+        RowHeadersVisible = false,
+        SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+        EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2,
+    };
+    private readonly Dictionary<int, ComboBox> _equipCombos = new();
+    private SplitContainer? _split;
+    private readonly CheckedListBox _esperOwnedList = new() { Dock = DockStyle.Fill, CheckOnClick = true };
+    private readonly ComboBox _equippedEsperCombo = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Anchor = AnchorStyles.Left | AnchorStyles.Right,
+        Margin = new Padding(6),
+    };
+
+    public MainForm()
+    {
+        Text = "FFVI Pixel Remaster — Save Editor";
+        Width = 1100;
+        Height = 720;
+        StartPosition = FormStartPosition.CenterScreen;
+
+        BuildMenu();
+        BuildStatus();
+        BuildLayout();
+
+        _characterList.SelectedIndexChanged += (_, _) => OnCharacterSelected();
+        _gilBox.ValueChanged += OnGilChanged;
+        _totalGilBox.ValueChanged += (_, _) => { if (!_suppressEvents && _save is not null) _save.UserData.TotalGil = (int)_totalGilBox.Value; };
+        _stepsBox.ValueChanged += (_, _) => { if (!_suppressEvents && _save is not null) _save.UserData.Steps = (int)_stepsBox.Value; };
+        _spellList.ItemCheck += OnSpellChecked;
+
+        SetEnabled(false);
+        _statusLabel.Text = "Open a save file to begin (File → Open).";
+
+        // WinForms resets SplitContainer.SplitterDistance during initial layout
+        // when the control is constructed via field initializer — force it on Load.
+        Load += (_, _) => { if (_split is not null) _split.SplitterDistance = 340; };
+    }
+
+    private void BuildMenu()
+    {
+        var menu = new MenuStrip();
+        var fileMenu = new ToolStripMenuItem("&File");
+        var openItem = new ToolStripMenuItem("&Open...", null, (_, _) => OnOpen()) { ShortcutKeys = Keys.Control | Keys.O };
+        var saveItem = new ToolStripMenuItem("&Save", null, (_, _) => OnSave()) { ShortcutKeys = Keys.Control | Keys.S };
+        var saveAsItem = new ToolStripMenuItem("Save &As...", null, (_, _) => OnSaveAs());
+        var exitItem = new ToolStripMenuItem("E&xit", null, (_, _) => Close());
+        fileMenu.DropDownItems.AddRange(new ToolStripItem[]
+        {
+            openItem, saveItem, saveAsItem, new ToolStripSeparator(), exitItem,
+        });
+        menu.Items.Add(fileMenu);
+        MainMenuStrip = menu;
+        Controls.Add(menu);
+    }
+
+    private void BuildStatus()
+    {
+        _status.Items.Add(_statusLabel);
+        _status.Dock = DockStyle.Bottom;
+        Controls.Add(_status);
+    }
+
+    private void BuildLayout()
+    {
+        var split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            FixedPanel = FixedPanel.Panel1,
+            Panel1MinSize = 260,
+            SplitterDistance = 340,
+        };
+        _split = split;
+
+        var leftLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(6) };
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var partyGroup = new GroupBox { Text = "Party", Dock = DockStyle.Fill };
+        var partyGrid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Padding = new Padding(8) };
+        partyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        partyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        partyGrid.Controls.Add(new Label { Text = "Gil:", Anchor = AnchorStyles.Left, AutoSize = true }, 0, 0);
+        partyGrid.Controls.Add(_gilBox, 1, 0);
+        partyGrid.Controls.Add(new Label { Text = "Total Gil:", Anchor = AnchorStyles.Left, AutoSize = true }, 0, 1);
+        partyGrid.Controls.Add(_totalGilBox, 1, 1);
+        partyGrid.Controls.Add(new Label { Text = "Steps:", Anchor = AnchorStyles.Left, AutoSize = true }, 0, 2);
+        partyGrid.Controls.Add(_stepsBox, 1, 2);
+        partyGroup.Controls.Add(partyGrid);
+
+        var charGroup = new GroupBox { Text = "Characters", Dock = DockStyle.Fill };
+        charGroup.Controls.Add(_characterList);
+
+        leftLayout.Controls.Add(partyGroup, 0, 0);
+        leftLayout.Controls.Add(charGroup, 0, 1);
+        split.Panel1.Controls.Add(leftLayout);
+
+        AddTab("Stats", BuildStatsTab());
+        AddTab("Spells", BuildSpellsTab());
+        AddTab("Equipment", BuildEquipmentTab());
+        AddTab("Items", BuildItemsTab());
+        AddTab("Espers", BuildEspersTab());
+
+        // _tabContent must be added BEFORE _tabStrip so the strip sits at the top (z-order).
+        split.Panel2.Controls.Add(_tabContent);
+        split.Panel2.Controls.Add(_tabStrip);
+
+        ShowTab("Stats");
+
+        Controls.Add(split);
+    }
+
+    private void AddTab(string name, Panel panel)
+    {
+        var btn = new Button
+        {
+            Text = name,
+            Width = 100,
+            Height = 50,
+            FlatStyle = FlatStyle.Flat,
+            AutoSize = false,
+            Font = new Font("Segoe UI", 10F),
+            Left = _tabButtons.Count * 104 + 4,
+            Top = 5,
+            TextAlign = ContentAlignment.MiddleCenter,
+            UseVisualStyleBackColor = true,
+        };
+        btn.FlatAppearance.BorderColor = SystemColors.ControlDark;
+        btn.FlatAppearance.BorderSize = 1;
+        btn.Click += (_, _) => ShowTab(name);
+        _tabStrip.Controls.Add(btn);
+        _tabButtons[name] = btn;
+
+        panel.Dock = DockStyle.Fill;
+        panel.Visible = false;
+        _tabPanels[name] = panel;
+        _tabContent.Controls.Add(panel);
+    }
+
+    private void ShowTab(string name)
+    {
+        foreach (var (k, p) in _tabPanels) p.Visible = (k == name);
+        foreach (var (k, b) in _tabButtons) b.Font = new Font(b.Font, (k == name) ? FontStyle.Bold : FontStyle.Regular);
+    }
+
+    private Panel BuildStatsTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+        var stack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            WrapContents = false,
+            Padding = new Padding(10),
+        };
+
+        stack.Controls.Add(BuildStatGroup("Vitals (level-dependent — base computed by game)",
+        [
+            ("Current HP",  "CurrentHp",       0, 99999, "Current health. Party members are capped at 9999 in-game."),
+            ("+ Max HP",    "AdditionalMaxHp", 0, 99999, "Bonus added to base Max HP. Total Max HP = base (from level) + this. Level-based base isn't shown here yet."),
+            ("Current MP",  "CurrentMp",       0, 99999, "Current MP. Party members are capped at 999 in-game. Will be clamped to Max MP on load."),
+            ("+ Max MP",    "AdditionalMaxMp", 0,  9999, "Bonus added to base Max MP. Total Max MP = base (from level) + this. Level-based base isn't shown here yet."),
+            ("+ Level",     "AdditionalLevel", 0,    99, "Bonus level added on top of the base. Levels factor into damage and level-dependent spells (Lv.5 Death, Lv.4 Flare, etc.)."),
+        ]));
+
+        stack.Controls.Add(BuildTotalStatGroup("Core Stats (edit Total)",
+        [
+            ("Strength",      "AdditionalPower",            s => s.Strength,     0, 255, "Physical damage stat. Effective cap is 128 even though it can be raised higher. Doubled and added to Attack in the damage formula."),
+            ("Stamina",       "AdditionalVitality",         s => s.Stamina,      0, 255, "Resists Death attacks. Increases Regen heal, Poison/Sap damage taken, Tintinnabulum step-healing."),
+            ("Speed",         "AdditionalAgility",          s => s.Speed,        0, 255, "Fills the ATB gauge faster. +20 baseline plus Haste/Slow effects."),
+            ("Magic",         "AdditionalMagic",            s => s.Magic,        0, 255, "Magic Power. Increases magical damage. No 128 cap, unlike Strength. Sabin's Blitzes use this too."),
+        ]));
+
+        stack.Controls.Add(BuildTotalStatGroup("Combat (edit Total)",
+        [
+            ("Attack",        "AdditionalAttack",           s => s.Attack,       0, 255, "Battle Power (weapon-based). Added to (Strength x 2) for physical damage. Normally only changed by weapons."),
+            ("Defense",       "AdditionalDefence",          s => s.Defense,      0, 255, "Reduces physical damage. Formula: damage * (255 - Defense) / 256 + 1."),
+            ("Magic Defense", "AdditionalMagicDefense",     s => s.MagicDefense, 0, 255, "Reduces magical damage. Same formula as Defense."),
+            ("Evasion",       "AdditionalEvasionRate",      s => s.Evasion,      0, 255, "Physical block %. Block value = (255 - Evasion x 2) + 1."),
+            ("Magic Evasion", "AdditionalMagicEvasionRate", s => s.MagicEvasion, 0, 255, "Magic block %. Same formula as Evasion."),
+        ]));
+
+        stack.Controls.Add(BuildStatGroup("Bonus-only (no documented base)",
+        [
+            ("+ Hit Rate",      "AdditionalAccuracyRate", 0, 255, "Accuracy. Reduces miss chance. Mainly an enemy-side stat in vanilla mechanics."),
+            ("+ Critical Rate", "AdditionalCriticalRate", 0, 255, "Critical hit chance."),
+            ("+ Luck",          "AdditionalLuck",         0, 255, "Not documented as a real stat in Pixel Remaster. Present in the save data but likely vestigial."),
+            ("+ Intelligence",  "AdditionalIntelligence", 0, 255, "Not documented as a real stat in Pixel Remaster. Present in the save data but likely vestigial."),
+            ("+ Spirit",        "AdditionalSpirit",       0, 255, "Not documented as a real stat in Pixel Remaster. Present in the save data but likely vestigial."),
+        ]));
+
+        scroll.Controls.Add(stack);
+        page.Controls.Add(scroll);
+        return page;
+    }
+
+    private GroupBox BuildStatGroup(string title, (string label, string propName, int min, int max, string description)[] stats)
+    {
+        var group = new GroupBox
+        {
+            Text = title,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 10),
+            MinimumSize = new Size(600, 0),
+        };
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 4,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        for (var i = 0; i < 4; i++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+
+        foreach (var (label, propName, min, max, description) in stats)
+            AddStatRow(grid, label, propName, min, max, description);
+
+        group.Controls.Add(grid);
+        return group;
+    }
+
+    private GroupBox BuildTotalStatGroup(string title, (string label, string propName, Func<RawStats, int> baseFn, int min, int max, string description)[] stats)
+    {
+        var group = new GroupBox
+        {
+            Text = title,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 10),
+            MinimumSize = new Size(600, 0),
+        };
+        var grid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            ColumnCount = 3,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35));
+
+        // Header row
+        grid.Controls.Add(new Label { Text = "Stat", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(5) });
+        grid.Controls.Add(new Label { Text = "Base", AutoSize = true, Font = new Font(Font, FontStyle.Bold), ForeColor = SystemColors.GrayText, Margin = new Padding(5) });
+        grid.Controls.Add(new Label { Text = "Total", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(5) });
+
+        foreach (var (label, propName, baseFn, min, max, description) in stats)
+            AddTotalStatRow(grid, label, propName, baseFn, min, max, description);
+
+        group.Controls.Add(grid);
+        return group;
+    }
+
+    private void AddTotalStatRow(TableLayoutPanel grid, string label, string propName,
+        Func<RawStats, int> baseFn, int min, int max, string description)
+    {
+        var labelCtl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(5) };
+        var baseLabel = new Label { Text = "—", AutoSize = true, ForeColor = SystemColors.GrayText, Anchor = AnchorStyles.Left, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(5) };
+        var totalBox = NumBox(min, max);
+        totalBox.Margin = new Padding(5);
+        totalBox.Width = 90;
+
+        totalBox.ValueChanged += (_, _) =>
+        {
+            if (_suppressEvents || _selectedCharacter is null) return;
+            var bs = CharacterBaseStats.For(_selectedCharacter.Name);
+            var baseVal = bs is null ? 0 : baseFn(bs);
+            var total = (int)totalBox.Value;
+            var prop = typeof(CharacterStats).GetProperty(propName);
+            prop?.SetValue(_selectedCharacter.Stats, total - baseVal);
+        };
+
+        _tooltip.SetToolTip(labelCtl, description);
+        _tooltip.SetToolTip(totalBox, description);
+        _totalStats[propName] = (baseLabel, totalBox, baseFn);
+        grid.Controls.Add(labelCtl);
+        grid.Controls.Add(baseLabel);
+        grid.Controls.Add(totalBox);
+    }
+
+    private void AddStatRow(TableLayoutPanel grid, string label, string propName, int min, int max, string? description = null)
+    {
+        var labelCtl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left | AnchorStyles.Right, TextAlign = ContentAlignment.MiddleRight, Width = 120, Margin = new Padding(5) };
+        var box = NumBox(min, max);
+        box.Margin = new Padding(5);
+        box.Width = 90;
+        box.ValueChanged += (_, _) =>
+        {
+            if (_suppressEvents || _selectedCharacter is null) return;
+            var prop = typeof(CharacterStats).GetProperty(propName);
+            prop?.SetValue(_selectedCharacter.Stats, (int)box.Value);
+        };
+        if (!string.IsNullOrEmpty(description))
+        {
+            _tooltip.SetToolTip(labelCtl, description);
+            _tooltip.SetToolTip(box, description);
+        }
+        _statBoxes[propName] = box;
+        grid.Controls.Add(labelCtl);
+        grid.Controls.Add(box);
+    }
+
+    private Panel BuildSpellsTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(6) };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        var allBtn = new Button { Text = "Learn All", AutoSize = true };
+        var noneBtn = new Button { Text = "Forget All", AutoSize = true };
+        allBtn.Click += (_, _) => SetAllSpells(true);
+        noneBtn.Click += (_, _) => SetAllSpells(false);
+        btnPanel.Controls.AddRange(new Control[] { allBtn, noneBtn });
+
+        foreach (var s in Spells.All)
+            _spellList.Items.Add($"{s.Id,3}  {s.Name}");
+
+        layout.Controls.Add(btnPanel, 0, 0);
+        layout.Controls.Add(_spellList, 0, 1);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private void SetAllSpells(bool learned)
+    {
+        if (_selectedCharacter is null) return;
+        _suppressEvents = true;
+        for (var i = 0; i < _spellList.Items.Count; i++)
+        {
+            _spellList.SetItemChecked(i, learned);
+            var spell = Spells.All[i];
+            if (learned) _selectedCharacter.Abilities.LearnSpell(spell.Id);
+            else _selectedCharacter.Abilities.ForgetSpell(spell.Id);
+        }
+        _suppressEvents = false;
+    }
+
+    private Panel BuildItemsTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(6) };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        var newEntryBtn = new Button { Text = "New Entry", AutoSize = true };
+        var removeBtn = new Button { Text = "Remove Selected", AutoSize = true };
+        var maxBtn = new Button { Text = "Max all to 99", AutoSize = true };
+        newEntryBtn.Click += (_, _) => AddNewInventoryEntry();
+        removeBtn.Click += (_, _) => RemoveInventoryStack();
+        maxBtn.Click += (_, _) => MaxAllInventory();
+        btnPanel.Controls.AddRange(new Control[] { newEntryBtn, removeBtn, maxBtn });
+
+        var itemCol = new DataGridViewComboBoxColumn
+        {
+            HeaderText = "Item",
+            DataSource = ItemDropdownEntries(),
+            DisplayMember = "Display",
+            ValueMember = "Id",
+            FlatStyle = FlatStyle.Flat,
+        };
+        var countCol = new DataGridViewTextBoxColumn { HeaderText = "Count", ValueType = typeof(int) };
+        _itemsGrid.Columns.Add(itemCol);
+        _itemsGrid.Columns.Add(countCol);
+        _itemsGrid.CellValueChanged += OnInventoryCellChanged;
+        _itemsGrid.DataError += (s, e) => { e.ThrowException = false; e.Cancel = true; };
+
+        layout.Controls.Add(btnPanel, 0, 0);
+        layout.Controls.Add(_itemsGrid, 0, 1);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private Panel BuildEspersTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(10),
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+
+        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        var allBtn = new Button { Text = "Own All", AutoSize = true };
+        var noneBtn = new Button { Text = "Own None", AutoSize = true };
+        allBtn.Click += (_, _) => SetAllEspers(true);
+        noneBtn.Click += (_, _) => SetAllEspers(false);
+        btnPanel.Controls.AddRange(new Control[] { allBtn, noneBtn });
+
+        foreach (var e in Ffvi.SaveTool.Data.Espers.All)
+            _esperOwnedList.Items.Add($"{e.Id,3}  {e.Name}");
+        _esperOwnedList.ItemCheck += OnEsperOwnedChecked;
+
+        var equippedRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+        };
+        equippedRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
+        equippedRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var equippedLabel = new Label
+        {
+            Text = "Equipped on selected character:",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(6, 12, 6, 6),
+        };
+        var equippedEntries = new List<ItemRow> { new(0, "(none)") };
+        equippedEntries.AddRange(Ffvi.SaveTool.Data.Espers.All.Select(e => new ItemRow(e.Id, e.Name)));
+        _equippedEsperCombo.DataSource = equippedEntries;
+        _equippedEsperCombo.DisplayMember = "Display";
+        _equippedEsperCombo.ValueMember = "Id";
+        _equippedEsperCombo.SelectedValueChanged += (_, _) =>
+        {
+            if (_suppressEvents || _selectedCharacter is null || _equippedEsperCombo.SelectedValue is not int id) return;
+            _selectedCharacter.EquippedEsperId = id;
+        };
+        equippedRow.Controls.Add(equippedLabel);
+        equippedRow.Controls.Add(_equippedEsperCombo);
+
+        layout.Controls.Add(btnPanel, 0, 0);
+        layout.Controls.Add(_esperOwnedList, 0, 1);
+        layout.Controls.Add(equippedRow, 0, 2);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private void SetAllEspers(bool owned)
+    {
+        if (_save is null) return;
+        _suppressEvents = true;
+        for (var i = 0; i < _esperOwnedList.Items.Count; i++)
+        {
+            _esperOwnedList.SetItemChecked(i, owned);
+            var id = Ffvi.SaveTool.Data.Espers.All[i].Id;
+            if (owned) _save.UserData.OwnedEsperIds.Add(id);
+            else _save.UserData.OwnedEsperIds.Remove(id);
+        }
+        _suppressEvents = false;
+    }
+
+    private void OnEsperOwnedChecked(object? sender, ItemCheckEventArgs e)
+    {
+        if (_suppressEvents || _save is null) return;
+        var id = Ffvi.SaveTool.Data.Espers.All[e.Index].Id;
+        if (e.NewValue == CheckState.Checked) _save.UserData.OwnedEsperIds.Add(id);
+        else _save.UserData.OwnedEsperIds.Remove(id);
+    }
+
+    private void RefreshEspers()
+    {
+        if (_save is null) return;
+        _suppressEvents = true;
+        for (var i = 0; i < _esperOwnedList.Items.Count; i++)
+            _esperOwnedList.SetItemChecked(i, _save.UserData.OwnedEsperIds.Contains(Ffvi.SaveTool.Data.Espers.All[i].Id));
+        if (_selectedCharacter is not null)
+            _equippedEsperCombo.SelectedValue = _selectedCharacter.EquippedEsperId;
+        _suppressEvents = false;
+    }
+
+    private Panel BuildEquipmentTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 6,
+            Padding = new Padding(20),
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < 6; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        AddEquipSlot(layout, "Weapon",  Equipment.WeaponKey,  ItemCategory.Weapon, Equipment.EmptyWeaponShieldId);
+        AddEquipSlot(layout, "Shield",  Equipment.ShieldKey,  ItemCategory.Shield, Equipment.EmptyWeaponShieldId);
+        AddEquipSlot(layout, "Helmet",  Equipment.HelmetKey,  ItemCategory.Helmet, Equipment.EmptyHelmetId);
+        AddEquipSlot(layout, "Armor",   Equipment.ArmorKey,   ItemCategory.Armor,  Equipment.EmptyArmorId);
+        AddEquipSlot(layout, "Relic 1", Equipment.Relic1Key,  ItemCategory.Relic,  Equipment.EmptyRelicId);
+        AddEquipSlot(layout, "Relic 2", Equipment.Relic2Key,  ItemCategory.Relic,  Equipment.EmptyRelicId);
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private void AddEquipSlot(TableLayoutPanel grid, string label, int slotKey, ItemCategory category, int emptyId)
+    {
+        var lbl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(6) };
+        var combo = new ComboBox
+        {
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            DataSource = EquipDropdownEntries(category, emptyId),
+            DisplayMember = "Display",
+            ValueMember = "Id",
+            Margin = new Padding(6),
+        };
+        combo.SelectedValueChanged += (_, _) =>
+        {
+            if (_suppressEvents || _selectedCharacter is null || _save is null || combo.SelectedValue is not int id) return;
+            _selectedCharacter.Equipment.SetSlot(slotKey, id);
+            // The game validates equipped items against the inventory: if a slot points to an item
+            // that isn't owned, the game unequips it on load. So we make sure the new item is in inventory.
+            if (!IsEmptyPlaceholder(id)) EnsureInInventory(_save.UserData.NormalInventory, id);
+            RefreshInventoryGrid();
+        };
+        _equipCombos[slotKey] = combo;
+        grid.Controls.Add(lbl);
+        grid.Controls.Add(combo);
+    }
+
+    private static IList<ItemRow> ItemDropdownEntries()
+    {
+        // Include EmptyPlaceholder slots — the game uses these to represent unfilled
+        // equipment-slot stacks (IDs 93, 197, 198, 199, 200). Skip only the truly-invalid id=0.
+        return Items.Normal
+            .Where(i => i.Category is not ItemCategory.Empty)
+            .OrderBy(i => i.Category == ItemCategory.EmptyPlaceholder ? 1 : 0)
+            .ThenBy(i => i.Category.ToString())
+            .ThenBy(i => i.Name)
+            .Select(i => new ItemRow(i.Id,
+                i.Category == ItemCategory.EmptyPlaceholder
+                    ? i.Name
+                    : $"[{i.Category}] {i.Name}"))
+            .ToList();
+    }
+
+    private static IList<ItemRow> EquipDropdownEntries(ItemCategory category, int emptyId)
+    {
+        var list = new List<ItemRow> { new(emptyId, "(empty)") };
+        list.AddRange(Items.Normal
+            .Where(i => i.Category == category)
+            .OrderBy(i => i.Name)
+            .Select(i => new ItemRow(i.Id, i.Name)));
+        return list;
+    }
+
+    private void OnInventoryCellChanged(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (_suppressEvents || _save is null || e.RowIndex < 0) return;
+        var row = _itemsGrid.Rows[e.RowIndex];
+        var idObj = row.Cells[0].Value;
+        var countObj = row.Cells[1].Value;
+        if (idObj is not int id) return;
+        var count = countObj is int c ? c : (int.TryParse(countObj?.ToString(), out var p) ? p : 0);
+        count = Math.Clamp(count, 0, Inventory.MaxStackCount);
+        _save.UserData.NormalInventory.Set(e.RowIndex, id, count);
+    }
+
+    // Default new entries to Potion (id=2) — a universally-usable item, so the user can
+    // immediately verify the row works. They then change the item via the dropdown.
+    private const int DefaultNewItemId = 2;
+
+    private void AddNewInventoryEntry()
+    {
+        if (_save is null) return;
+        _save.UserData.NormalInventory.Stacks.Add(new ItemStack(DefaultNewItemId, 1));
+        RefreshInventoryGrid();
+        if (_itemsGrid.Rows.Count > 0)
+        {
+            var lastRow = _itemsGrid.Rows.Count - 1;
+            _itemsGrid.ClearSelection();
+            _itemsGrid.Rows[lastRow].Selected = true;
+            _itemsGrid.CurrentCell = _itemsGrid.Rows[lastRow].Cells[0];
+        }
+    }
+
+    private void RemoveInventoryStack()
+    {
+        if (_save is null || _itemsGrid.CurrentRow is null) return;
+        var idx = _itemsGrid.CurrentRow.Index;
+        if (idx < 0 || idx >= _save.UserData.NormalInventory.Stacks.Count) return;
+        _save.UserData.NormalInventory.RemoveAt(idx);
+        RefreshInventoryGrid();
+    }
+
+    private void MaxAllInventory()
+    {
+        if (_save is null) return;
+        var inv = _save.UserData.NormalInventory;
+        for (var i = 0; i < inv.Stacks.Count; i++)
+        {
+            var s = inv.Stacks[i];
+            if (s.ItemId > 0 && s.ItemId is not 93 and not 197 and not 198 and not 199 and not 200)
+                inv.Set(i, s.ItemId, Inventory.MaxStackCount);
+        }
+        RefreshInventoryGrid();
+    }
+
+    private static bool IsEmptyPlaceholder(int id) => id is 93 or 197 or 198 or 199 or 200;
+
+    private static void EnsureInInventory(Inventory inv, int itemId)
+    {
+        if (inv.Stacks.Any(s => s.ItemId == itemId)) return;
+        inv.Stacks.Add(new ItemStack(itemId, 1));
+    }
+
+    private void RefreshInventoryGrid()
+    {
+        if (_save is null) return;
+        _suppressEvents = true;
+        _itemsGrid.Rows.Clear();
+        foreach (var stack in _save.UserData.NormalInventory.Stacks)
+            _itemsGrid.Rows.Add(stack.ItemId, stack.Count);
+        _suppressEvents = false;
+    }
+
+    private void RefreshEquipment()
+    {
+        if (_selectedCharacter is null) return;
+        _suppressEvents = true;
+        foreach (var (slotKey, combo) in _equipCombos)
+        {
+            try { combo.SelectedValue = _selectedCharacter.Equipment.GetSlot(slotKey); }
+            catch { /* item id not in dropdown for this slot type — ignore */ }
+        }
+        _suppressEvents = false;
+    }
+
+    private record ItemRow(int Id, string Display);
+
+    private void OnSpellChecked(object? sender, ItemCheckEventArgs e)
+    {
+        if (_suppressEvents || _selectedCharacter is null) return;
+        var spell = Spells.All[e.Index];
+        if (e.NewValue == CheckState.Checked) _selectedCharacter.Abilities.LearnSpell(spell.Id);
+        else _selectedCharacter.Abilities.ForgetSpell(spell.Id);
+    }
+
+    // Total Gil only goes up in-game (it's a cumulative lifetime total). Mirror that here:
+    // when the user increases Gil, bump Total Gil by the same delta; when they decrease, leave it.
+    // User can still manually edit Total Gil directly.
+    private void OnGilChanged(object? sender, EventArgs e)
+    {
+        if (_suppressEvents || _save is null) return;
+        var oldGil = _save.UserData.Gil;
+        var newGil = (int)_gilBox.Value;
+        _save.UserData.Gil = newGil;
+        if (newGil > oldGil)
+        {
+            _save.UserData.TotalGil += newGil - oldGil;
+            _suppressEvents = true;
+            _totalGilBox.Value = Math.Clamp(_save.UserData.TotalGil, _totalGilBox.Minimum, _totalGilBox.Maximum);
+            _suppressEvents = false;
+        }
+    }
+
+    private void OnOpen()
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "Open FFVI PR save file",
+            InitialDirectory = SaveFile.DefaultSaveDirectory(),
+            Filter = "All files|*",
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            _save = SaveFile.Load(dlg.FileName);
+            if (!_save.IsSlotFile())
+            {
+                MessageBox.Show(this, "This file isn't a character save slot (no character data). Try a larger file in the same folder.", "Not a slot save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _save = null;
+                _statusLabel.Text = "Open a save file to begin.";
+                SetEnabled(false);
+                return;
+            }
+            PopulateUi();
+            SetEnabled(true);
+            _statusLabel.Text = $"Loaded: {Path.GetFileName(dlg.FileName)}  |  slot id={_save.SlotId}  |  {_save.UserData.Characters.Count} characters";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to load save:\n{ex.Message}", "Load error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void OnSave()
+    {
+        if (_save is null) return;
+        try
+        {
+            _save.Save();
+            _statusLabel.Text = $"Saved: {Path.GetFileName(_save.Path)}  |  {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to save:\n{ex.Message}", "Save error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void OnSaveAs()
+    {
+        if (_save is null) return;
+        using var dlg = new SaveFileDialog
+        {
+            Title = "Save as",
+            InitialDirectory = Path.GetDirectoryName(_save.Path),
+            FileName = Path.GetFileName(_save.Path),
+            Filter = "All files|*",
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            _save.Save(dlg.FileName);
+            _statusLabel.Text = $"Saved as: {Path.GetFileName(dlg.FileName)}  |  {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Failed to save:\n{ex.Message}", "Save error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void PopulateUi()
+    {
+        if (_save is null) return;
+        _suppressEvents = true;
+        _gilBox.Value = Math.Clamp(_save.UserData.Gil, (int)_gilBox.Minimum, (int)_gilBox.Maximum);
+        _totalGilBox.Value = Math.Clamp(_save.UserData.TotalGil, (int)_totalGilBox.Minimum, (int)_totalGilBox.Maximum);
+        _stepsBox.Value = Math.Clamp(_save.UserData.Steps, (int)_stepsBox.Minimum, (int)_stepsBox.Maximum);
+
+        _characterList.Items.Clear();
+        foreach (var c in _save.UserData.Characters)
+            _characterList.Items.Add($"{c.Id,2}  {c.Name}");
+        if (_characterList.Items.Count > 0) _characterList.SelectedIndex = 0;
+        _suppressEvents = false;
+        RefreshInventoryGrid();
+        RefreshEspers();
+    }
+
+    private void OnCharacterSelected()
+    {
+        if (_save is null) return;
+        var idx = _characterList.SelectedIndex;
+        if (idx < 0 || idx >= _save.UserData.Characters.Count) { _selectedCharacter = null; return; }
+        _selectedCharacter = _save.UserData.Characters[idx];
+
+        _suppressEvents = true;
+        foreach (var kv in _statBoxes)
+        {
+            var prop = typeof(CharacterStats).GetProperty(kv.Key);
+            if (prop is null) continue;
+            var value = (int)(prop.GetValue(_selectedCharacter.Stats) ?? 0);
+            kv.Value.Value = Math.Clamp(value, (int)kv.Value.Minimum, (int)kv.Value.Maximum);
+        }
+
+        var bs = CharacterBaseStats.For(_selectedCharacter.Name);
+        foreach (var (propName, (baseLbl, totalBox, baseFn)) in _totalStats)
+        {
+            var baseVal = bs is null ? 0 : baseFn(bs);
+            var prop = typeof(CharacterStats).GetProperty(propName);
+            var bonus = prop is null ? 0 : (int)(prop.GetValue(_selectedCharacter.Stats) ?? 0);
+            baseLbl.Text = bs is null ? "—" : baseVal.ToString();
+            totalBox.Value = Math.Clamp(baseVal + bonus, (int)totalBox.Minimum, (int)totalBox.Maximum);
+        }
+
+        var learned = new HashSet<int>(
+            _selectedCharacter.Abilities.LearnedMagic().Select(a => a.AbilityId));
+        for (var i = 0; i < _spellList.Items.Count; i++)
+            _spellList.SetItemChecked(i, learned.Contains(Spells.All[i].Id));
+        _suppressEvents = false;
+        RefreshEquipment();
+        RefreshEspers();
+    }
+
+    private void SetEnabled(bool enabled)
+    {
+        _gilBox.Enabled = _totalGilBox.Enabled = _stepsBox.Enabled = enabled;
+        _tabContent.Enabled = enabled;
+        foreach (var b in _tabButtons.Values) b.Enabled = enabled;
+        _characterList.Enabled = enabled;
+    }
+
+    private static NumericUpDown NumBox(int min, int max) => new()
+    {
+        Minimum = min,
+        Maximum = max,
+        Width = 110,
+        Anchor = AnchorStyles.Left,
+    };
+
+    private static Label ComingSoonLabel(string text) => new()
+    {
+        Text = text,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleCenter,
+        ForeColor = Color.Gray,
+    };
+}
