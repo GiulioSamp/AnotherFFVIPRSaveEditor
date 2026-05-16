@@ -61,7 +61,6 @@ You can also identify files by content. Larger files (50 KB and up) with a `pict
 
 ## Safety notes
 
-- Single-player game. There is no fair-play angle here, but be aware of it if you stream or share saves.
 - Always keep a backup. The editor does not auto-backup yet.
 - If your edited slot shows as Empty in the game's load menu, the save was rejected. Restore from backup. This usually means a field the editor doesn't yet handle was left in an inconsistent state. Open an issue with the steps you took.
 
