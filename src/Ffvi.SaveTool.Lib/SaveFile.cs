@@ -17,12 +17,16 @@ public class SaveFile
     public string Path { get; }
     public JsonObject Top { get; }
     public UserData UserData { get; }
+    public JsonObject? MapData { get; }
+    public VeldtEncounters? Veldt { get; }
 
-    private SaveFile(string path, JsonObject top, UserData userData)
+    private SaveFile(string path, JsonObject top, UserData userData, JsonObject? mapData, VeldtEncounters? veldt)
     {
         Path = path;
         Top = top;
         UserData = userData;
+        MapData = mapData;
+        Veldt = veldt;
     }
 
     public int SlotId => Top["id"]?.GetValue<int>() ?? -1;
@@ -35,7 +39,16 @@ public class SaveFile
         var top = JsonNode.Parse(json)!.AsObject();
         var userDataNode = NestedJson.Unwrap(top, "userData").AsObject();
         var userData = new UserData(userDataNode);
-        return new SaveFile(path, top, userData);
+
+        JsonObject? mapData = null;
+        VeldtEncounters? veldt = null;
+        if (top.ContainsKey("mapData"))
+        {
+            mapData = NestedJson.Unwrap(top, "mapData").AsObject();
+            veldt = new VeldtEncounters(mapData);
+        }
+
+        return new SaveFile(path, top, userData, mapData, veldt);
     }
 
     public bool IsSlotFile() => Top.ContainsKey("id") && Top.ContainsKey("pictureData");
@@ -46,6 +59,12 @@ public class SaveFile
     {
         UserData.Commit();
         NestedJson.Rewrap(Top, "userData", UserData.Node);
+
+        if (MapData is not null)
+        {
+            Veldt?.Commit();
+            NestedJson.Rewrap(Top, "mapData", MapData);
+        }
 
         var json = Top.ToJsonString(JsonOpts);
         var encrypted = SaveCrypto.Encrypt(json);

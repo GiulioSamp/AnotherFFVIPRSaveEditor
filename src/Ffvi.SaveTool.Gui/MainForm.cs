@@ -10,10 +10,10 @@ public class MainForm : Form
     private bool _suppressEvents;
 
     private readonly ListBox _characterList = new() { Dock = DockStyle.Fill, IntegralHeight = true };
-    private readonly Panel _tabStrip = new() { Dock = DockStyle.Top, Height = 60, BackColor = SystemColors.Control };
-    private readonly Panel _tabContent = new() { Dock = DockStyle.Fill };
-    private readonly Dictionary<string, Panel> _tabPanels = new();
-    private readonly Dictionary<string, Button> _tabButtons = new();
+    private readonly TabSet _topTabs = new(stripHeight: 60, buttonWidth: 110, buttonHeight: 50, buttonTop: 5, buttonSpacing: 4, fontSize: 10F);
+    private readonly TabSet _charSubTabs = new(stripHeight: 40, buttonWidth: 100, buttonHeight: 30, buttonTop: 5, buttonSpacing: 3, fontSize: 9F);
+    private readonly TabSet _skillsSubTabs = new(stripHeight: 40, buttonWidth: 100, buttonHeight: 30, buttonTop: 5, buttonSpacing: 3, fontSize: 9F);
+    private readonly Dictionary<int, ComboBox> _commandCombos = new();
     private readonly StatusStrip _status = new();
     private readonly ToolStripStatusLabel _statusLabel = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
 
@@ -44,6 +44,14 @@ public class MainForm : Form
         Anchor = AnchorStyles.Left | AnchorStyles.Right,
         Margin = new Padding(6),
     };
+    private readonly Label _veldtCountLabel = new()
+    {
+        AutoSize = true,
+        Margin = new Padding(10, 4, 10, 4),
+        Font = new Font("Segoe UI", 10F),
+    };
+    private readonly CheckedListBox _veldtList = new() { Dock = DockStyle.Fill, CheckOnClick = true };
+    private readonly TextBox _veldtFilter = new() { Dock = DockStyle.Fill, PlaceholderText = "Filter formations..." };
 
     public MainForm()
     {
@@ -128,52 +136,47 @@ public class MainForm : Form
         leftLayout.Controls.Add(charGroup, 0, 1);
         split.Panel1.Controls.Add(leftLayout);
 
-        AddTab("Stats", BuildStatsTab());
-        AddTab("Spells", BuildSpellsTab());
-        AddTab("Equipment", BuildEquipmentTab());
-        AddTab("Items", BuildItemsTab());
-        AddTab("Espers", BuildEspersTab());
+        _charSubTabs.AddTab("Stats", BuildStatsTab());
+        _charSubTabs.AddTab("Magic", BuildSpellsTab());
+        _charSubTabs.AddTab("Equipment", BuildEquipmentTab());
+        _charSubTabs.AddTab("Commands", BuildCommandsTab());
+        _charSubTabs.Show("Stats");
 
-        // _tabContent must be added BEFORE _tabStrip so the strip sits at the top (z-order).
-        split.Panel2.Controls.Add(_tabContent);
-        split.Panel2.Controls.Add(_tabStrip);
+        _skillsSubTabs.AddTab("Rages", BuildSkillTab(new SkillTabState
+        {
+            Name = "Rages", OwnerCharacterName = "Gau",
+            FirstId = Rages.FirstId, LastId = Rages.LastId, Offset = Rages.ContentIdOffset,
+            Items = Rages.All.Select(r => (r.Id, r.Name)).ToList(),
+        }));
+        _skillsSubTabs.AddTab("Bushido", BuildSkillTab(new SkillTabState
+        {
+            Name = "Bushido", OwnerCharacterName = "Cyan",
+            FirstId = Bushido.FirstId, LastId = Bushido.LastId, Offset = Bushido.ContentIdOffset,
+            Items = Bushido.All.Select(b => (b.Id, b.Name)).ToList(),
+        }));
+        _skillsSubTabs.AddTab("Lore", BuildSkillTab(new SkillTabState
+        {
+            Name = "Lore", OwnerCharacterName = "Strago",
+            FirstId = Lores.FirstId, LastId = Lores.LastId, Offset = Lores.ContentIdOffset,
+            Items = Lores.All.Select(l => (l.Id, l.Name)).ToList(),
+        }));
+        _skillsSubTabs.AddTab("Blitz", BuildSkillTab(new SkillTabState
+        {
+            Name = "Blitz", OwnerCharacterName = "Sabin",
+            FirstId = Blitzes.FirstId, LastId = Blitzes.LastId, Offset = Blitzes.ContentIdOffset,
+            Items = Blitzes.All.Select(b => (b.Id, b.Name)).ToList(),
+        }));
+        _skillsSubTabs.Show("Rages");
 
-        ShowTab("Stats");
+        _topTabs.AddTab("Characters", _charSubTabs.BuildPanel());
+        _topTabs.AddTab("Inventory", BuildItemsTab());
+        _topTabs.AddTab("Skills", _skillsSubTabs.BuildPanel());
+        _topTabs.AddTab("Espers", BuildEspersTab());
+        _topTabs.AddTab("Veldt", BuildVeldtTab());
+        _topTabs.Mount(split.Panel2);
+        _topTabs.Show("Characters");
 
         Controls.Add(split);
-    }
-
-    private void AddTab(string name, Panel panel)
-    {
-        var btn = new Button
-        {
-            Text = name,
-            Width = 100,
-            Height = 50,
-            FlatStyle = FlatStyle.Flat,
-            AutoSize = false,
-            Font = new Font("Segoe UI", 10F),
-            Left = _tabButtons.Count * 104 + 4,
-            Top = 5,
-            TextAlign = ContentAlignment.MiddleCenter,
-            UseVisualStyleBackColor = true,
-        };
-        btn.FlatAppearance.BorderColor = SystemColors.ControlDark;
-        btn.FlatAppearance.BorderSize = 1;
-        btn.Click += (_, _) => ShowTab(name);
-        _tabStrip.Controls.Add(btn);
-        _tabButtons[name] = btn;
-
-        panel.Dock = DockStyle.Fill;
-        panel.Visible = false;
-        _tabPanels[name] = panel;
-        _tabContent.Controls.Add(panel);
-    }
-
-    private void ShowTab(string name)
-    {
-        foreach (var (k, p) in _tabPanels) p.Visible = (k == name);
-        foreach (var (k, b) in _tabButtons) b.Font = new Font(b.Font, (k == name) ? FontStyle.Bold : FontStyle.Regular);
     }
 
     private Panel BuildStatsTab()
@@ -495,6 +498,329 @@ public class MainForm : Form
         else _save.UserData.OwnedEsperIds.Remove(id);
     }
 
+    // Commands that are safe to set on any character regardless of class.
+    private static readonly HashSet<int> UniversalCommandIds = new() { 4, 1, 2, 3, 5 };
+
+    private Panel BuildCommandsTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 11,
+            Padding = new Padding(20),
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        var explain = new Label
+        {
+            Text = "The dropdown is restricted to commands this character already had at load, plus universal-safe commands "
+                 + "(Attack, Defend, Items, Row, [none]). Assigning a cross-class command (e.g. Sabin's Blitz to Terra) "
+                 + "would otherwise corrupt the save.",
+            AutoSize = true,
+            MaximumSize = new Size(600, 0),
+            Font = new Font(Font, FontStyle.Italic),
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(4, 0, 4, 12),
+        };
+        layout.Controls.Add(explain, 0, 0);
+        layout.SetColumnSpan(explain, 2);
+
+        var resetBtn = new Button
+        {
+            Text = "Reset to original",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(4, 0, 4, 8),
+        };
+        resetBtn.Click += (_, _) =>
+        {
+            if (_selectedCharacter is null) return;
+            _selectedCharacter.Commands.ResetToOriginal();
+            RefreshCommands();
+        };
+        layout.Controls.Add(resetBtn, 0, 1);
+        layout.SetColumnSpan(resetBtn, 2);
+
+        for (var slot = 0; slot < 8; slot++)
+        {
+            var slotIndex = slot;
+            var lbl = new Label
+            {
+                Text = $"Slot {slot + 1}",
+                AutoSize = true,
+                Anchor = AnchorStyles.Left,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(4, 8, 4, 4),
+            };
+            var combo = new ComboBox
+            {
+                Anchor = AnchorStyles.Left | AnchorStyles.Right,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                DisplayMember = "Display",
+                ValueMember = "Id",
+                Margin = new Padding(4),
+            };
+            combo.SelectedValueChanged += (_, _) =>
+            {
+                if (_suppressEvents || _selectedCharacter is null || combo.SelectedValue is not int id) return;
+                if (slotIndex < _selectedCharacter.Commands.Slots.Count)
+                    _selectedCharacter.Commands.Slots[slotIndex] = id;
+            };
+            _commandCombos[slotIndex] = combo;
+            layout.Controls.Add(lbl, 0, slot + 2);
+            layout.Controls.Add(combo, 1, slot + 2);
+        }
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private record CommandRow(int Id, string Display);
+
+    private static List<CommandRow> AllowedCommandsFor(Character c)
+    {
+        var allowed = new HashSet<int>(UniversalCommandIds);
+        foreach (var id in c.Commands.OriginalSlots) allowed.Add(id);
+        return Commands.All
+            .Where(cmd => allowed.Contains(cmd.Id))
+            .OrderBy(cmd => cmd.Id == Commands.NoneId ? 0 : 1)
+            .ThenBy(cmd => cmd.Name)
+            .Select(cmd => new CommandRow(cmd.Id, $"{cmd.Name} ({cmd.Id})"))
+            .ToList();
+    }
+
+    private void RefreshCommands()
+    {
+        if (_selectedCharacter is null) return;
+        _suppressEvents = true;
+        // Rebuild the allowed-commands list for the current character so each slot's dropdown
+        // only offers safe choices.
+        var entries = AllowedCommandsFor(_selectedCharacter);
+        for (var i = 0; i < 8; i++)
+        {
+            if (!_commandCombos.TryGetValue(i, out var combo)) continue;
+            combo.DataSource = new List<CommandRow>(entries);
+            combo.DisplayMember = "Display";
+            combo.ValueMember = "Id";
+
+            if (i >= _selectedCharacter.Commands.Slots.Count)
+            {
+                combo.SelectedValue = Commands.NoneId;
+                continue;
+            }
+            try { combo.SelectedValue = _selectedCharacter.Commands.Slots[i]; }
+            catch { /* current value not in allowed list — keep first option */ }
+        }
+        _suppressEvents = false;
+    }
+
+    // Generic per-character "skill" tab. Used for Rages (Gau), Bushido (Cyan),
+    // Lores (Strago), Blitzes (Sabin), and potentially Dance (Mog) later.
+    // Each tab is independent state — they all share the same builder.
+    private class SkillTabState
+    {
+        public string Name { get; init; } = "";
+        public string OwnerCharacterName { get; init; } = "";
+        public int FirstId { get; init; }
+        public int LastId { get; init; }
+        public int Offset { get; init; }
+        public IReadOnlyList<(int Id, string Name)> Items { get; init; } = Array.Empty<(int, string)>();
+        public CheckedListBox List { get; } = new() { Dock = DockStyle.Fill, CheckOnClick = true };
+        public Label Header { get; } = new()
+        {
+            AutoSize = true,
+            Margin = new Padding(10, 10, 10, 6),
+            Font = new Font("Segoe UI", 10F),
+        };
+    }
+
+    private readonly Dictionary<string, SkillTabState> _skillTabs = new();
+
+    private Panel BuildSkillTab(SkillTabState s)
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(6),
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        var learnAll = new Button { Text = "Learn All", AutoSize = true };
+        var forgetAll = new Button { Text = "Forget All", AutoSize = true };
+        learnAll.Click += (_, _) => SetAllSkill(s, true);
+        forgetAll.Click += (_, _) => SetAllSkill(s, false);
+        btnPanel.Controls.AddRange(new Control[] { learnAll, forgetAll });
+
+        foreach (var (id, name) in s.Items)
+            s.List.Items.Add($"{id,4}  {name}");
+        s.List.ItemCheck += (_, e) => OnSkillItemChecked(s, e);
+
+        layout.Controls.Add(s.Header, 0, 0);
+        layout.Controls.Add(btnPanel, 0, 1);
+        layout.Controls.Add(s.List, 0, 2);
+        page.Controls.Add(layout);
+
+        _skillTabs[s.Name] = s;
+        return page;
+    }
+
+    private Character? GetSkillOwner(string name) =>
+        _save?.UserData.Characters.FirstOrDefault(c => c.Name == name);
+
+    private void SetAllSkill(SkillTabState s, bool learned)
+    {
+        var owner = GetSkillOwner(s.OwnerCharacterName);
+        if (owner is null) return;
+        _suppressEvents = true;
+        for (var i = 0; i < s.List.Items.Count; i++)
+        {
+            s.List.SetItemChecked(i, learned);
+            var id = s.Items[i].Id;
+            if (learned) owner.Abilities.LearnSkill(id, s.Offset);
+            else owner.Abilities.ForgetSkill(id);
+        }
+        _suppressEvents = false;
+        RefreshSkill(s);
+    }
+
+    private void OnSkillItemChecked(SkillTabState s, ItemCheckEventArgs e)
+    {
+        if (_suppressEvents) return;
+        var owner = GetSkillOwner(s.OwnerCharacterName);
+        if (owner is null) { e.NewValue = e.CurrentValue; return; }
+        var id = s.Items[e.Index].Id;
+        if (e.NewValue == CheckState.Checked) owner.Abilities.LearnSkill(id, s.Offset);
+        else owner.Abilities.ForgetSkill(id);
+    }
+
+    private void RefreshSkill(SkillTabState s)
+    {
+        var owner = GetSkillOwner(s.OwnerCharacterName);
+        _suppressEvents = true;
+        if (owner is null)
+        {
+            s.Header.Text = $"{s.Name} is {s.OwnerCharacterName}'s skill. {s.OwnerCharacterName} isn't in this save yet.";
+            s.List.Enabled = false;
+            for (var i = 0; i < s.List.Items.Count; i++) s.List.SetItemChecked(i, false);
+        }
+        else
+        {
+            s.List.Enabled = true;
+            var learned = new HashSet<int>(
+                owner.Abilities.LearnedSkillsInRange(s.FirstId, s.LastId).Select(a => a.AbilityId));
+            for (var i = 0; i < s.List.Items.Count; i++)
+                s.List.SetItemChecked(i, learned.Contains(s.Items[i].Id));
+            s.Header.Text = $"{owner.Name}'s {s.Name}: {learned.Count} / {s.Items.Count} learned.";
+        }
+        _suppressEvents = false;
+    }
+
+    private void RefreshAllSkills()
+    {
+        foreach (var s in _skillTabs.Values) RefreshSkill(s);
+    }
+
+    private Panel BuildVeldtTab()
+    {
+        var page = new Panel { Dock = DockStyle.Fill };
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 3,
+            Padding = new Padding(10),
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var filterLabel = new Label { Text = "Filter:", AutoSize = true, Anchor = AnchorStyles.Left, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(4, 8, 4, 4) };
+        _veldtFilter.TextChanged += (_, _) => ApplyVeldtFilter();
+
+        var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        var markBtn = new Button { Text = "Mark all seen", AutoSize = true, Margin = new Padding(0, 4, 8, 0) };
+        var clearBtn = new Button { Text = "Clear all", AutoSize = true, Margin = new Padding(0, 4, 8, 0) };
+        markBtn.Click += (_, _) => SetAllVeldt(true);
+        clearBtn.Click += (_, _) => SetAllVeldt(false);
+        btnPanel.Controls.Add(markBtn);
+        btnPanel.Controls.Add(clearBtn);
+        btnPanel.Controls.Add(_veldtCountLabel);
+
+        _veldtList.ItemCheck += OnVeldtItemCheck;
+
+        layout.Controls.Add(filterLabel, 0, 0);
+        layout.Controls.Add(_veldtFilter, 1, 0);
+        layout.Controls.Add(btnPanel, 0, 1);
+        layout.SetColumnSpan(btnPanel, 2);
+        layout.Controls.Add(_veldtList, 0, 2);
+        layout.SetColumnSpan(_veldtList, 2);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    // Map list-row index (which may be a filtered subset) back to the underlying encounter index.
+    private readonly List<int> _veldtVisibleIndices = new();
+
+    private void RefreshVeldt()
+    {
+        if (_save?.Veldt is null)
+        {
+            _veldtCountLabel.Text = "No Veldt data in this save.";
+            _veldtList.Items.Clear();
+            _veldtVisibleIndices.Clear();
+            return;
+        }
+        ApplyVeldtFilter();
+    }
+
+    private void ApplyVeldtFilter()
+    {
+        if (_save?.Veldt is null) return;
+        _suppressEvents = true;
+        _veldtList.Items.Clear();
+        _veldtVisibleIndices.Clear();
+        var filter = _veldtFilter.Text?.Trim() ?? "";
+        for (var i = 0; i < _save.Veldt.Encounters.Count; i++)
+        {
+            var name = VeldtFormations.NameFor(i);
+            if (filter.Length > 0 && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) continue;
+            _veldtList.Items.Add($"{i,3}  {name}", _save.Veldt.Encounters[i]);
+            _veldtVisibleIndices.Add(i);
+        }
+        _veldtCountLabel.Text = $"Seen: {_save.Veldt.SeenCount} / {_save.Veldt.TotalCount}";
+        _suppressEvents = false;
+    }
+
+    private void OnVeldtItemCheck(object? sender, ItemCheckEventArgs e)
+    {
+        if (_suppressEvents || _save?.Veldt is null) return;
+        if (e.Index < 0 || e.Index >= _veldtVisibleIndices.Count) return;
+        var underlyingIndex = _veldtVisibleIndices[e.Index];
+        _save.Veldt.Encounters[underlyingIndex] = (e.NewValue == CheckState.Checked);
+        _veldtCountLabel.Text = $"Seen: {_save.Veldt.SeenCount + (e.NewValue == CheckState.Checked ? 1 : -1)} / {_save.Veldt.TotalCount}";
+    }
+
+    private void SetAllVeldt(bool seen)
+    {
+        if (_save?.Veldt is null) return;
+        if (seen) _save.Veldt.MarkAllSeen();
+        else _save.Veldt.ClearAll();
+        ApplyVeldtFilter();
+    }
+
     private void RefreshEspers()
     {
         if (_save is null) return;
@@ -777,6 +1103,8 @@ public class MainForm : Form
         _suppressEvents = false;
         RefreshInventoryGrid();
         RefreshEspers();
+        RefreshVeldt();
+        RefreshAllSkills();
     }
 
     private void OnCharacterSelected()
@@ -812,13 +1140,13 @@ public class MainForm : Form
         _suppressEvents = false;
         RefreshEquipment();
         RefreshEspers();
+        RefreshCommands();
     }
 
     private void SetEnabled(bool enabled)
     {
         _gilBox.Enabled = _totalGilBox.Enabled = _stepsBox.Enabled = enabled;
-        _tabContent.Enabled = enabled;
-        foreach (var b in _tabButtons.Values) b.Enabled = enabled;
+        _topTabs.SetEnabled(enabled);
         _characterList.Enabled = enabled;
     }
 

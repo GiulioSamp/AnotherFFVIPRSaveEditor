@@ -8,6 +8,7 @@ public class Character
     public CharacterStats Stats { get; }
     public CharacterAbilities Abilities { get; }
     public Equipment Equipment { get; }
+    public CharacterCommands Commands { get; }
 
     private readonly JsonArray _parentArray;
     private readonly int _indexInParent;
@@ -23,6 +24,7 @@ public class Character
             NestedJson.Unwrap(node, "abilityDictionary").AsObject(),
             node);
         Equipment = new Equipment(NestedJson.Unwrap(node, "equipmentList").AsObject(), node, inventory);
+        Commands = new CharacterCommands(node);
     }
 
     public int Id => Node["id"]?.GetValue<int>() ?? -1;
@@ -51,6 +53,7 @@ public class Character
         Stats.Commit();
         Abilities.Commit();
         Equipment.Commit();
+        Commands.Commit();
         _parentArray[_indexInParent] = JsonValue.Create(Node.ToJsonString(SaveFile.JsonOpts));
     }
 }

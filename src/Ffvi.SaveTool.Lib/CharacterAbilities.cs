@@ -20,6 +20,49 @@ public class CharacterAbilities
 
     public List<AbilityEntry> AllAbilities() => ParseTarget(_abilityListNode);
 
+    // Rages, Lores, Bushidos, Blitzes, Dances — these "skill" abilities are only stored in
+    // abilityList (not also in abilityDictionary like spells), and use different offsets.
+    // For a rage, contentId = abilityId + 168 (per the Go reference).
+    public List<AbilityEntry> LearnedSkillsInRange(int fromId, int toId) => AllAbilities()
+        .Where(a => a.AbilityId >= fromId && a.AbilityId <= toId && a.SkillLevel >= 100)
+        .ToList();
+
+    public void LearnSkill(int abilityId, int contentIdOffset)
+    {
+        var target = _abilityListNode["target"]!.AsArray();
+        for (var i = 0; i < target.Count; i++)
+        {
+            var ab = JsonNode.Parse(target[i]!.GetValue<string>())!.AsObject();
+            if (ab["abilityId"]?.GetValue<int>() == abilityId)
+            {
+                ab["skillLevel"] = 100;
+                target[i] = JsonValue.Create(ab.ToJsonString(SaveFile.JsonOpts));
+                return;
+            }
+        }
+        target.Add(JsonValue.Create(new JsonObject
+        {
+            ["abilityId"] = abilityId,
+            ["contentId"] = abilityId + contentIdOffset,
+            ["skillLevel"] = 100,
+        }.ToJsonString(SaveFile.JsonOpts)));
+    }
+
+    public void ForgetSkill(int abilityId)
+    {
+        var target = _abilityListNode["target"]!.AsArray();
+        for (var i = 0; i < target.Count; i++)
+        {
+            var ab = JsonNode.Parse(target[i]!.GetValue<string>())!.AsObject();
+            if (ab["abilityId"]?.GetValue<int>() == abilityId)
+            {
+                ab["skillLevel"] = 0;
+                target[i] = JsonValue.Create(ab.ToJsonString(SaveFile.JsonOpts));
+                return;
+            }
+        }
+    }
+
     public List<AbilityEntry> LearnedMagic()
     {
         var (_, target) = GetCategory(MagicCategoryKey);
@@ -56,17 +99,22 @@ public class CharacterAbilities
             }.ToJsonString(SaveFile.JsonOpts)));
         }
 
-        var (catIdx, catTarget) = GetCategory(categoryKey);
+        // .NET 10's JsonNode enforces single-parent ownership, so we keep a reference to the
+        // parsed category object (catObj) and mutate its target in place, then re-serialize the
+        // whole catObj. Wrapping catTarget in a new JsonObject throws ("node already has a parent").
+        var (catIdx, catObj) = GetCategoryObj(categoryKey);
         if (catIdx == -1)
         {
             var keys = _abilityDictNode["keys"]!.AsArray();
             var values = _abilityDictNode["values"]!.AsArray();
             keys.Add(categoryKey);
-            values.Add(JsonValue.Create(new JsonObject { ["target"] = new JsonArray() }.ToJsonString(SaveFile.JsonOpts)));
-            (catIdx, catTarget) = GetCategory(categoryKey);
+            catObj = new JsonObject { ["target"] = new JsonArray() };
+            values.Add(JsonValue.Create(catObj.ToJsonString(SaveFile.JsonOpts)));
+            catIdx = keys.Count - 1;
         }
+        var catTarget = catObj!["target"]!.AsArray();
         var inDict = false;
-        for (var i = 0; i < catTarget!.Count; i++)
+        for (var i = 0; i < catTarget.Count; i++)
         {
             var ab = JsonNode.Parse(catTarget[i]!.GetValue<string>())!.AsObject();
             if (ab["abilityId"]?.GetValue<int>() == abilityId) { inDict = true; break; }
@@ -80,7 +128,7 @@ public class CharacterAbilities
                 ["skillLevel"] = 100,
             }.ToJsonString(SaveFile.JsonOpts)));
             var values = _abilityDictNode["values"]!.AsArray();
-            values[catIdx] = JsonValue.Create(new JsonObject { ["target"] = catTarget }.ToJsonString(SaveFile.JsonOpts));
+            values[catIdx] = JsonValue.Create(catObj.ToJsonString(SaveFile.JsonOpts));
         }
     }
 
@@ -98,8 +146,9 @@ public class CharacterAbilities
             }
         }
 
-        var (catIdx, catTarget) = GetCategory(categoryKey);
-        if (catIdx == -1 || catTarget is null) return;
+        var (catIdx, catObj) = GetCategoryObj(categoryKey);
+        if (catIdx == -1 || catObj is null) return;
+        var catTarget = catObj["target"]!.AsArray();
         for (var i = catTarget.Count - 1; i >= 0; i--)
         {
             var ab = JsonNode.Parse(catTarget[i]!.GetValue<string>())!.AsObject();
@@ -107,11 +156,26 @@ public class CharacterAbilities
                 catTarget.RemoveAt(i);
         }
         var values = _abilityDictNode["values"]!.AsArray();
-        values[catIdx] = JsonValue.Create(new JsonObject { ["target"] = catTarget }.ToJsonString(SaveFile.JsonOpts));
+        values[catIdx] = JsonValue.Create(catObj.ToJsonString(SaveFile.JsonOpts));
     }
 
     public void LearnSpell(int spellId) => LearnAbility(spellId, MagicCategoryKey);
     public void ForgetSpell(int spellId) => ForgetAbility(spellId, MagicCategoryKey);
+
+    private (int idx, JsonObject? catObj) GetCategoryObj(int key)
+    {
+        var keys = _abilityDictNode["keys"]!.AsArray();
+        var values = _abilityDictNode["values"]!.AsArray();
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (keys[i]?.GetValue<int>() == key)
+            {
+                var catObj = JsonNode.Parse(values[i]!.GetValue<string>())!.AsObject();
+                return (i, catObj);
+            }
+        }
+        return (-1, null);
+    }
 
     private (int idx, JsonArray? target) GetCategory(int key)
     {
