@@ -751,10 +751,10 @@ public class MainForm : Form
         _veldtFilter.TextChanged += (_, _) => ApplyVeldtFilter();
 
         var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
-        var markBtn = new Button { Text = "Mark all seen", AutoSize = true, Margin = new Padding(0, 4, 8, 0) };
-        var clearBtn = new Button { Text = "Clear all", AutoSize = true, Margin = new Padding(0, 4, 8, 0) };
-        markBtn.Click += (_, _) => SetAllVeldt(true);
-        clearBtn.Click += (_, _) => SetAllVeldt(false);
+        var markBtn = new Button { Text = "Mark visible as seen", AutoSize = true, Margin = new Padding(0, 4, 8, 0) };
+        var clearBtn = new Button { Text = "Clear visible", AutoSize = true, Margin = new Padding(0, 4, 8, 0) };
+        markBtn.Click += (_, _) => SetVisibleVeldt(true);
+        clearBtn.Click += (_, _) => SetVisibleVeldt(false);
         btnPanel.Controls.Add(markBtn);
         btnPanel.Controls.Add(clearBtn);
         btnPanel.Controls.Add(_veldtCountLabel);
@@ -810,14 +810,16 @@ public class MainForm : Form
         if (e.Index < 0 || e.Index >= _veldtVisibleIndices.Count) return;
         var underlyingIndex = _veldtVisibleIndices[e.Index];
         _save.Veldt.Encounters[underlyingIndex] = (e.NewValue == CheckState.Checked);
-        _veldtCountLabel.Text = $"Seen: {_save.Veldt.SeenCount + (e.NewValue == CheckState.Checked ? 1 : -1)} / {_save.Veldt.TotalCount}";
+        _veldtCountLabel.Text = $"Seen: {_save.Veldt.SeenCount} / {_save.Veldt.TotalCount}";
     }
 
-    private void SetAllVeldt(bool seen)
+    private void SetVisibleVeldt(bool seen)
     {
         if (_save?.Veldt is null) return;
-        if (seen) _save.Veldt.MarkAllSeen();
-        else _save.Veldt.ClearAll();
+        // Acts on whatever rows are currently visible. With an empty filter that's everything;
+        // with a filter typed in, only the matching formations are affected.
+        foreach (var idx in _veldtVisibleIndices)
+            _save.Veldt.Encounters[idx] = seen;
         ApplyVeldtFilter();
     }
 
