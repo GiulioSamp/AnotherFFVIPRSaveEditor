@@ -1152,13 +1152,24 @@ public class MainForm : Form
         _characterList.Enabled = enabled;
     }
 
-    private static NumericUpDown NumBox(int min, int max) => new()
+    private static NumericUpDown NumBox(int min, int max)
     {
-        Minimum = min,
-        Maximum = max,
-        Width = 110,
-        Anchor = AnchorStyles.Left,
-    };
+        var box = new NumericUpDown
+        {
+            Minimum = min,
+            Maximum = max,
+            Width = 110,
+            Anchor = AnchorStyles.Left,
+        };
+        // WinForms default: mouse-wheel over a NumericUpDown changes its value by +/-1
+        // per tick. That hijacks the wheel from scrolling the surrounding panel and
+        // silently mutates stat values whenever someone scrolls past. Suppress it.
+        box.MouseWheel += (s, e) =>
+        {
+            if (e is HandledMouseEventArgs h) h.Handled = true;
+        };
+        return box;
+    }
 
     private static Label ComingSoonLabel(string text) => new()
     {
