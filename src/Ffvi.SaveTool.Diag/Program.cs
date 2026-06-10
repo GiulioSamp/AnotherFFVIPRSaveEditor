@@ -1,43 +1,34 @@
 using Ffvi.SaveTool;
 
-// Regression check: library-only load + save must produce identical JSON for a
-// clean game-written save. Any diff below means an editor "repair" fired or we broke parity.
+// Final verification: no-op rewrite of File 1 with the padding fix. Confirms the output
+// envelope now matches the game's own framing (padded base64 + BOM + CRLF) and that the
+// rewritten base64 length is valid (divisible by 4).
 
-var root = AppContext.BaseDirectory;
-var dir = new DirectoryInfo(root);
-while (dir is not null && !Directory.Exists(System.IO.Path.Combine(dir.FullName, "FFVI saved normal")))
-    dir = dir.Parent;
-if (dir is null) { Console.WriteLine("No 'FFVI saved normal' folder"); return 1; }
-
-var sourcePath = Directory.GetFiles(System.IO.Path.Combine(dir.FullName, "FFVI saved normal")).First();
-var outPath = sourcePath + ".lib-roundtrip";
-
-var originalJson = SaveCrypto.Decrypt(File.ReadAllBytes(sourcePath));
-var save = SaveFile.Load(sourcePath);
-save.Save(outPath);
-var roundtrippedJson = SaveCrypto.Decrypt(File.ReadAllBytes(outPath));
-File.Delete(outPath);
-
-Console.WriteLine($"original len:     {originalJson.Length}");
-Console.WriteLine($"roundtripped len: {roundtrippedJson.Length}");
-Console.WriteLine($"identical?        {originalJson == roundtrippedJson}");
-
-if (originalJson != roundtrippedJson)
+var savesDir = SaveFile.DefaultSaveDirectory();
+string? targetPath = null;
+foreach (var f in Directory.GetFiles(savesDir).Where(f => new FileInfo(f).Length > 30000 && !f.EndsWith(".backup")))
 {
-    var minLen = Math.Min(originalJson.Length, roundtrippedJson.Length);
-    for (var i = 0; i < minLen; i++)
-    {
-        if (originalJson[i] != roundtrippedJson[i])
-        {
-            var s = Math.Max(0, i - 80);
-            Console.WriteLine($"\nfirst diff at {i}:");
-            Console.WriteLine($"  orig: ...{originalJson[s..Math.Min(minLen, i + 80)]}...");
-            Console.WriteLine($"  new:  ...{roundtrippedJson[s..Math.Min(minLen, i + 80)]}...");
-            break;
-        }
-    }
-    return 1;
+    if (SaveFile.Load(f).SlotId == 1) { targetPath = f; break; }
 }
+if (targetPath is null) { Console.WriteLine("slot id=1 not found"); return 1; }
+var backupPath = targetPath + ".backup";
 
-Console.WriteLine("\nLibrary roundtrip parity holds after the dedupe/invariant changes.");
+File.Copy(backupPath, targetPath, overwrite: true);
+var originalJson = SaveCrypto.Decrypt(File.ReadAllBytes(targetPath));
+
+var save = SaveFile.Load(targetPath);
+save.Save();
+
+var bytes = File.ReadAllBytes(targetPath);
+var rewrittenJson = SaveCrypto.Decrypt(bytes);
+Console.WriteLine($"JSON identical: {originalJson == rewrittenJson}");
+
+// Validate envelope: BOM + base64 (length % 4 == 0) + CRLF
+var hasBom = bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+var hasCrlf = bytes[^2] == 0x0D && bytes[^1] == 0x0A;
+var b64Len = bytes.Length - 3 - 2;
+Console.WriteLine($"BOM: {hasBom}  CRLF: {hasCrlf}  base64 length: {b64Len} (mod 4 = {b64Len % 4})");
+Console.WriteLine($"tail: ...{System.Text.Encoding.ASCII.GetString(bytes[^10..^2])}\\r\\n");
+Console.WriteLine();
+Console.WriteLine("Load the entry stamped 10/06/2026 22:43 in-game. This is the definitive writer test.");
 return 0;

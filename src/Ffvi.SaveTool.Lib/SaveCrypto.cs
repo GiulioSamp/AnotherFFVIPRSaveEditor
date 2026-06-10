@@ -39,7 +39,12 @@ public static class SaveCrypto
         var compressed = DeflateCompress(jsonBytes);
         var padded = AddZeroPadding(compressed);
         var cipher = RijndaelTransform(padded, encrypt: true);
-        var b64 = Convert.ToBase64String(cipher).TrimEnd('=');
+        // Keep the '=' padding. The game's own writer emits standard padded base64 (verified
+        // against a game-written autosave ending "Y6hQ==\r\n"), and its parser rejects
+        // unpadded input. The original reference file used to derive this framing happened to
+        // be a length needing no padding, which made TrimEnd('=') look correct — in reality it
+        // corrupted every write whose ciphertext length wasn't a multiple of 3.
+        var b64 = Convert.ToBase64String(cipher);
         return Encoding.ASCII.GetBytes(b64);
     }
 

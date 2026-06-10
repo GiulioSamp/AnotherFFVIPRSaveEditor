@@ -401,7 +401,7 @@ public class MainForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
-        var newEntryBtn = new Button { Text = "New Entry", AutoSize = true };
+        var newEntryBtn = new Button { Text = "Add Item...", AutoSize = true };
         var removeBtn = new Button { Text = "Remove Selected", AutoSize = true };
         var maxBtn = new Button { Text = "Max all to 99", AutoSize = true };
         newEntryBtn.Click += (_, _) => AddNewInventoryEntry();
@@ -956,17 +956,63 @@ public class MainForm : Form
         }
     }
 
-    // Default new entries to Potion (id=2) — a universally-usable item, so the user can
-    // immediately verify the row works. They then change the item via the dropdown.
-    private const int DefaultNewItemId = 2;
-
+    // Opens a small dialog to pick an item not currently owned, plus a count. Replaces the
+    // old "append a Potion and let the user change it" flow, which became useless once
+    // duplicate stacks were merged automatically (it just incremented the existing Potions).
     private void AddNewInventoryEntry()
     {
         if (_save is null) return;
-        // Add() merges into an existing stack instead of creating a duplicate row.
-        _save.UserData.NormalInventory.Add(DefaultNewItemId, 1);
+        var owned = _save.UserData.NormalInventory.Stacks.Select(s => s.ItemId).ToHashSet();
+        var candidates = Items.Normal
+            .Where(i => i.Category is not ItemCategory.Empty and not ItemCategory.EmptyPlaceholder)
+            .Where(i => !owned.Contains(i.Id))
+            .OrderBy(i => i.Category.ToString())
+            .ThenBy(i => i.Name)
+            .Select(i => new ItemRow(i.Id, $"[{i.Category}] {i.Name}"))
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            MessageBox.Show(this, "Every known item is already in the inventory.", "Add item",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var dlg = new Form
+        {
+            Text = "Add item",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false,
+            MaximizeBox = false,
+            ClientSize = new Size(380, 110),
+        };
+        var combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            DataSource = candidates,
+            DisplayMember = "Display",
+            ValueMember = "Id",
+            Location = new Point(12, 12),
+            Width = 260,
+        };
+        var countBox = new NumericUpDown
+        {
+            Minimum = 1,
+            Maximum = Inventory.MaxStackCount,
+            Value = 1,
+            Location = new Point(284, 12),
+            Width = 80,
+        };
+        var okBtn = new Button { Text = "Add", DialogResult = DialogResult.OK, Location = new Point(204, 70), Width = 76 };
+        var cancelBtn = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(288, 70), Width = 76 };
+        dlg.Controls.AddRange(new Control[] { combo, countBox, okBtn, cancelBtn });
+        dlg.AcceptButton = okBtn;
+        dlg.CancelButton = cancelBtn;
+
+        if (dlg.ShowDialog(this) != DialogResult.OK || combo.SelectedValue is not int id) return;
+        _save.UserData.NormalInventory.Add(id, (int)countBox.Value);
         RefreshInventoryGrid();
-        SelectInventoryRow(DefaultNewItemId);
+        SelectInventoryRow(id);
     }
 
     private void SelectInventoryRow(int itemId)
