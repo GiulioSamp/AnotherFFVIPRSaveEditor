@@ -899,7 +899,7 @@ public class MainForm : Form
             _selectedCharacter.Equipment.SetSlot(slotKey, id);
             // The game validates equipped items against the inventory: if a slot points to an item
             // that isn't owned, the game unequips it on load. So we make sure the new item is in inventory.
-            if (!IsEmptyPlaceholder(id)) EnsureInInventory(_save.UserData.NormalInventory, id);
+            if (!Equipment.IsEmptyPlaceholder(id)) EnsureInInventory(_save.UserData.NormalInventory, id);
             RefreshInventoryGrid();
         };
         _equipCombos[slotKey] = combo;
@@ -909,17 +909,15 @@ public class MainForm : Form
 
     private static IList<ItemRow> ItemDropdownEntries()
     {
-        // Include EmptyPlaceholder slots — the game uses these to represent unfilled
-        // equipment-slot stacks (IDs 93, 197, 198, 199, 200). Skip only the truly-invalid id=0.
+        // Exclude the EmptyPlaceholder ids (93/197/198/199/200): those stacks are the game's
+        // internal tally of empty equipment slots, hidden from the grid entirely — and the
+        // dropdown must not offer them either, or a user could convert a real item row into
+        // a rogue placeholder stack.
         return Items.Normal
-            .Where(i => i.Category is not ItemCategory.Empty)
-            .OrderBy(i => i.Category == ItemCategory.EmptyPlaceholder ? 1 : 0)
-            .ThenBy(i => i.Category.ToString())
+            .Where(i => i.Category is not ItemCategory.Empty and not ItemCategory.EmptyPlaceholder)
+            .OrderBy(i => i.Category.ToString())
             .ThenBy(i => i.Name)
-            .Select(i => new ItemRow(i.Id,
-                i.Category == ItemCategory.EmptyPlaceholder
-                    ? i.Name
-                    : $"[{i.Category}] {i.Name}"))
+            .Select(i => new ItemRow(i.Id, $"[{i.Category}] {i.Name}"))
             .ToList();
     }
 
@@ -936,14 +934,16 @@ public class MainForm : Form
     private void OnInventoryCellChanged(object? sender, DataGridViewCellEventArgs e)
     {
         if (_suppressEvents || _save is null || e.RowIndex < 0) return;
+        if (e.RowIndex >= _inventoryVisibleIndices.Count) return;
         var row = _itemsGrid.Rows[e.RowIndex];
         var idObj = row.Cells[0].Value;
         var countObj = row.Cells[1].Value;
         if (idObj is not int id) return;
+        if (Equipment.IsEmptyPlaceholder(id)) return; // not offered by the dropdown; belt and braces
         var count = countObj is int c ? c : (int.TryParse(countObj?.ToString(), out var p) ? p : 0);
         count = Math.Clamp(count, 0, Inventory.MaxStackCount);
         var inv = _save.UserData.NormalInventory;
-        inv.Set(e.RowIndex, id, count);
+        inv.Set(_inventoryVisibleIndices[e.RowIndex], id, count);
 
         // If the user picked an item that already exists in another row, merge immediately —
         // duplicate contentId entries corrupt the save (the game's equipment-count validation
@@ -972,19 +972,20 @@ public class MainForm : Form
     private void SelectInventoryRow(int itemId)
     {
         if (_save is null) return;
-        var idx = _save.UserData.NormalInventory.Stacks.FindIndex(s => s.ItemId == itemId);
-        if (idx < 0 || idx >= _itemsGrid.Rows.Count) return;
+        var stackIdx = _save.UserData.NormalInventory.Stacks.FindIndex(s => s.ItemId == itemId);
+        var rowIdx = _inventoryVisibleIndices.IndexOf(stackIdx);
+        if (rowIdx < 0 || rowIdx >= _itemsGrid.Rows.Count) return;
         _itemsGrid.ClearSelection();
-        _itemsGrid.Rows[idx].Selected = true;
-        _itemsGrid.CurrentCell = _itemsGrid.Rows[idx].Cells[0];
+        _itemsGrid.Rows[rowIdx].Selected = true;
+        _itemsGrid.CurrentCell = _itemsGrid.Rows[rowIdx].Cells[0];
     }
 
     private void RemoveInventoryStack()
     {
         if (_save is null || _itemsGrid.CurrentRow is null) return;
-        var idx = _itemsGrid.CurrentRow.Index;
-        if (idx < 0 || idx >= _save.UserData.NormalInventory.Stacks.Count) return;
-        _save.UserData.NormalInventory.RemoveAt(idx);
+        var rowIdx = _itemsGrid.CurrentRow.Index;
+        if (rowIdx < 0 || rowIdx >= _inventoryVisibleIndices.Count) return;
+        _save.UserData.NormalInventory.RemoveAt(_inventoryVisibleIndices[rowIdx]);
         RefreshInventoryGrid();
     }
 
@@ -995,13 +996,11 @@ public class MainForm : Form
         for (var i = 0; i < inv.Stacks.Count; i++)
         {
             var s = inv.Stacks[i];
-            if (s.ItemId > 0 && s.ItemId is not 93 and not 197 and not 198 and not 199 and not 200)
+            if (!Equipment.IsEmptyPlaceholder(s.ItemId))
                 inv.Set(i, s.ItemId, Inventory.MaxStackCount);
         }
         RefreshInventoryGrid();
     }
-
-    private static bool IsEmptyPlaceholder(int id) => id is 93 or 197 or 198 or 199 or 200;
 
     private static void EnsureInInventory(Inventory inv, int itemId)
     {
@@ -1009,13 +1008,25 @@ public class MainForm : Form
         inv.Stacks.Add(new ItemStack(itemId, 1));
     }
 
+    // Maps grid row index -> underlying Stacks index. Needed because the game's internal
+    // empty-slot placeholder stacks (ids 93/197/198/199/200) are hidden from the grid:
+    // their counts are bookkeeping the game validates against the roster's equipment
+    // state, and editing or deleting them risks corrupting the save.
+    private readonly List<int> _inventoryVisibleIndices = new();
+
     private void RefreshInventoryGrid()
     {
         if (_save is null) return;
         _suppressEvents = true;
         _itemsGrid.Rows.Clear();
-        foreach (var stack in _save.UserData.NormalInventory.Stacks)
-            _itemsGrid.Rows.Add(stack.ItemId, stack.Count);
+        _inventoryVisibleIndices.Clear();
+        var stacks = _save.UserData.NormalInventory.Stacks;
+        for (var i = 0; i < stacks.Count; i++)
+        {
+            if (Equipment.IsEmptyPlaceholder(stacks[i].ItemId)) continue;
+            _itemsGrid.Rows.Add(stacks[i].ItemId, stacks[i].Count);
+            _inventoryVisibleIndices.Add(i);
+        }
         _suppressEvents = false;
     }
 
