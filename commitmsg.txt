@@ -1,0 +1,22 @@
+﻿Fix save corruption caused by stripped base64 padding
+
+SaveCrypto.Encrypt removed the trailing = padding from the base64
+output. The reference save used to derive the framing happened to be
+a length that needed no padding, which made the strip look correct.
+In reality the game writes standard padded base64 (verified against
+game-written saves) and rejects unpadded input, so roughly two out of
+three editor writes were corrupted: every write whose ciphertext
+length was not a multiple of 3.
+
+This was the root cause behind the intermittent save-data-corrupted
+reports across v1.1.0 through v1.1.4. The failures tracked payload
+size, not the content being edited, which is why the bug masqueraded
+as several different ones (stat edits, equipment changes, inventory
+removal, quicksave slots). Verified in-game with a no-op rewrite and
+with previously failing edits.
+
+Also in this release:
+- New Entry on the Items tab replaced with an Add Item dialog that
+  lists items not yet owned plus a count picker. The old flow just
+  incremented the existing Potion stack after duplicate merging was
+  added.
