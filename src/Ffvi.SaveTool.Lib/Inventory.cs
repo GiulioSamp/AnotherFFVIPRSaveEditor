@@ -47,8 +47,30 @@ public class Inventory
 
     public void Clear() => Stacks.Clear();
 
+    // Merges duplicate contentId stacks in place (first-seen order, counts summed and
+    // capped). The game rejects saves with duplicate inventory entries, and equipment
+    // count validation reads per-item totals — so duplicates must never reach disk.
+    public void MergeDuplicates()
+    {
+        var merged = new List<ItemStack>(Stacks.Count);
+        var indexById = new Dictionary<int, int>();
+        foreach (var s in Stacks)
+        {
+            if (indexById.TryGetValue(s.ItemId, out var at))
+                merged[at] = merged[at] with { Count = Math.Min(MaxStackCount, merged[at].Count + s.Count) };
+            else
+            {
+                indexById[s.ItemId] = merged.Count;
+                merged.Add(s);
+            }
+        }
+        Stacks.Clear();
+        Stacks.AddRange(merged);
+    }
+
     internal void Commit()
     {
+        MergeDuplicates();
         var target = new JsonArray();
         foreach (var s in Stacks)
         {

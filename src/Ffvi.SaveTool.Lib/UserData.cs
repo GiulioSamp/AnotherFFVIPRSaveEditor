@@ -70,6 +70,12 @@ public class UserData
 
     internal void Commit()
     {
+        // Dedupe BEFORE character commit so Equipment.Commit's count-mirroring sees the
+        // merged stacks. Note: equipped items that are absent from inventory are a
+        // legitimate game state (clean game-written saves contain them; slot count is
+        // simply 1 in that case) — do NOT "repair" them by injecting inventory entries.
+        NormalInventory.MergeDuplicates();
+
         foreach (var c in Characters) c.Commit();
         NormalInventory.Commit();
         ImportantInventory.Commit();

@@ -41,6 +41,11 @@ public class Equipment
     public int GetSlot(int slotKey) => _slotItemIds.GetValueOrDefault(slotKey, 0);
     public void SetSlot(int slotKey, int itemId) => _slotItemIds[slotKey] = itemId;
 
+    public IEnumerable<int> EquippedItemIds => _slotItemIds.Values;
+
+    public static bool IsEmptyPlaceholder(int itemId) =>
+        itemId is 0 or EmptyWeaponShieldId or 197 or EmptyHelmetId or EmptyArmorId or EmptyRelicId;
+
     public int Weapon { get => GetSlot(WeaponKey); set => SetSlot(WeaponKey, value); }
     public int Shield { get => GetSlot(ShieldKey); set => SetSlot(ShieldKey, value); }
     public int Armor { get => GetSlot(ArmorKey); set => SetSlot(ArmorKey, value); }

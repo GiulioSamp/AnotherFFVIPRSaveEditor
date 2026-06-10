@@ -192,6 +192,18 @@ public class MainForm : Form
             Padding = new Padding(10),
         };
 
+        stack.Controls.Add(new Label
+        {
+            Text = "Note: the in-game status screen also adds equipment modifiers (weapons, relics, armor) on top of "
+                 + "what you set here. \"Total\" below = class base + permanent bonus only. If a character wears a "
+                 + "+5 Evasion relic, the game will show 5 more Evasion than this editor.",
+            AutoSize = true,
+            MaximumSize = new Size(680, 0),
+            ForeColor = SystemColors.GrayText,
+            Font = new Font(Font, FontStyle.Italic),
+            Margin = new Padding(4, 0, 4, 10),
+        });
+
         stack.Controls.Add(BuildStatGroup("Vitals (level-dependent — base computed by game)",
         [
             ("Current HP",  "CurrentHp",       0, 99999, "Current health. Party members are capped at 9999 in-game."),
@@ -830,7 +842,13 @@ public class MainForm : Form
         for (var i = 0; i < _esperOwnedList.Items.Count; i++)
             _esperOwnedList.SetItemChecked(i, _save.UserData.OwnedEsperIds.Contains(Ffvi.SaveTool.Data.Espers.All[i].Id));
         if (_selectedCharacter is not null)
-            _equippedEsperCombo.SelectedValue = _selectedCharacter.EquippedEsperId;
+        {
+            // Fall back to "(none)" for ids outside our table — leaving the combo on the previous
+            // character's esper would be misleading (and writing it back would be wrong).
+            var equippedId = _selectedCharacter.EquippedEsperId;
+            _equippedEsperCombo.SelectedValue =
+                (equippedId == 0 || Ffvi.SaveTool.Data.Espers.ById(equippedId) is not null) ? equippedId : 0;
+        }
         _suppressEvents = false;
     }
 
@@ -922,7 +940,18 @@ public class MainForm : Form
         if (idObj is not int id) return;
         var count = countObj is int c ? c : (int.TryParse(countObj?.ToString(), out var p) ? p : 0);
         count = Math.Clamp(count, 0, Inventory.MaxStackCount);
-        _save.UserData.NormalInventory.Set(e.RowIndex, id, count);
+        var inv = _save.UserData.NormalInventory;
+        inv.Set(e.RowIndex, id, count);
+
+        // If the user picked an item that already exists in another row, merge immediately —
+        // duplicate contentId entries corrupt the save (the game's equipment-count validation
+        // reads per-item totals).
+        if (inv.Stacks.Count(s => s.ItemId == id) > 1)
+        {
+            inv.MergeDuplicates();
+            RefreshInventoryGrid();
+            SelectInventoryRow(id);
+        }
     }
 
     // Default new entries to Potion (id=2) — a universally-usable item, so the user can
@@ -932,15 +961,20 @@ public class MainForm : Form
     private void AddNewInventoryEntry()
     {
         if (_save is null) return;
-        _save.UserData.NormalInventory.Stacks.Add(new ItemStack(DefaultNewItemId, 1));
+        // Add() merges into an existing stack instead of creating a duplicate row.
+        _save.UserData.NormalInventory.Add(DefaultNewItemId, 1);
         RefreshInventoryGrid();
-        if (_itemsGrid.Rows.Count > 0)
-        {
-            var lastRow = _itemsGrid.Rows.Count - 1;
-            _itemsGrid.ClearSelection();
-            _itemsGrid.Rows[lastRow].Selected = true;
-            _itemsGrid.CurrentCell = _itemsGrid.Rows[lastRow].Cells[0];
-        }
+        SelectInventoryRow(DefaultNewItemId);
+    }
+
+    private void SelectInventoryRow(int itemId)
+    {
+        if (_save is null) return;
+        var idx = _save.UserData.NormalInventory.Stacks.FindIndex(s => s.ItemId == itemId);
+        if (idx < 0 || idx >= _itemsGrid.Rows.Count) return;
+        _itemsGrid.ClearSelection();
+        _itemsGrid.Rows[idx].Selected = true;
+        _itemsGrid.CurrentCell = _itemsGrid.Rows[idx].Cells[0];
     }
 
     private void RemoveInventoryStack()

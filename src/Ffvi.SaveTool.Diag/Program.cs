@@ -1,57 +1,43 @@
-// Ffvi.SaveTool.Diag — read-only inspector for FFVI Pixel Remaster saves.
-// Decrypts the most recently modified slot save and prints a summary of every
-// userData field plus the top-level fields, with previews. Useful for reverse-engineering
-// schema fields we haven't yet mapped in the library.
-// Never writes to disk. Safe to run on a live save folder.
-
-using System.Text.Json.Nodes;
 using Ffvi.SaveTool;
 
-var savesDir = SaveFile.DefaultSaveDirectory();
-if (!Directory.Exists(savesDir))
+// Regression check: library-only load + save must produce identical JSON for a
+// clean game-written save. Any diff below means an editor "repair" fired or we broke parity.
+
+var root = AppContext.BaseDirectory;
+var dir = new DirectoryInfo(root);
+while (dir is not null && !Directory.Exists(System.IO.Path.Combine(dir.FullName, "FFVI saved normal")))
+    dir = dir.Parent;
+if (dir is null) { Console.WriteLine("No 'FFVI saved normal' folder"); return 1; }
+
+var sourcePath = Directory.GetFiles(System.IO.Path.Combine(dir.FullName, "FFVI saved normal")).First();
+var outPath = sourcePath + ".lib-roundtrip";
+
+var originalJson = SaveCrypto.Decrypt(File.ReadAllBytes(sourcePath));
+var save = SaveFile.Load(sourcePath);
+save.Save(outPath);
+var roundtrippedJson = SaveCrypto.Decrypt(File.ReadAllBytes(outPath));
+File.Delete(outPath);
+
+Console.WriteLine($"original len:     {originalJson.Length}");
+Console.WriteLine($"roundtripped len: {roundtrippedJson.Length}");
+Console.WriteLine($"identical?        {originalJson == roundtrippedJson}");
+
+if (originalJson != roundtrippedJson)
 {
-    Console.WriteLine($"Save folder not found at: {savesDir}");
+    var minLen = Math.Min(originalJson.Length, roundtrippedJson.Length);
+    for (var i = 0; i < minLen; i++)
+    {
+        if (originalJson[i] != roundtrippedJson[i])
+        {
+            var s = Math.Max(0, i - 80);
+            Console.WriteLine($"\nfirst diff at {i}:");
+            Console.WriteLine($"  orig: ...{originalJson[s..Math.Min(minLen, i + 80)]}...");
+            Console.WriteLine($"  new:  ...{roundtrippedJson[s..Math.Min(minLen, i + 80)]}...");
+            break;
+        }
+    }
     return 1;
 }
 
-var slotFile = Directory.GetFiles(savesDir)
-    .Where(f => !Path.GetFileName(f).Equals("steam_autocloud.vdf", StringComparison.OrdinalIgnoreCase))
-    .Select(f => (Path: f, Info: new FileInfo(f)))
-    .Where(x => x.Info.Length > 30000)
-    .OrderByDescending(x => x.Info.LastWriteTime)
-    .Select(x => x.Path)
-    .FirstOrDefault();
-
-if (slotFile is null)
-{
-    Console.WriteLine($"No slot save files (>30 KB) found in: {savesDir}");
-    return 1;
-}
-
-Console.WriteLine($"Inspecting most recently modified slot: {Path.GetFileName(slotFile)}");
-Console.WriteLine($"  ({new FileInfo(slotFile).Length} bytes, mtime {new FileInfo(slotFile).LastWriteTime:yyyy-MM-dd HH:mm:ss})\n");
-
-var save = SaveFile.Load(slotFile);
-Console.WriteLine($"slot id: {save.SlotId}  |  timestamp: {save.Timestamp}  |  characters: {save.UserData.Characters.Count}");
-Console.WriteLine($"gil: {save.UserData.Gil}  |  total gil: {save.UserData.TotalGil}  |  steps: {save.UserData.Steps}\n");
-
-Console.WriteLine("=== top-level fields ===\n");
-foreach (var (k, v) in save.Top)
-{
-    if (k == "pictureData") { Console.WriteLine($"--- {k} (skipped — large base64 PNG) ---\n"); continue; }
-    var s = v is JsonValue jv && jv.TryGetValue<string>(out var str) ? str : v?.ToJsonString() ?? "";
-    var preview = s.Length > 400 ? s[..400] + "..." : s;
-    Console.WriteLine($"--- {k} ({s.Length} chars) ---");
-    Console.WriteLine($"  {preview}\n");
-}
-
-Console.WriteLine("=== userData fields ===\n");
-foreach (var (k, v) in save.UserData.Node)
-{
-    var s = v is JsonValue jv && jv.TryGetValue<string>(out var str) ? str : v?.ToJsonString() ?? "";
-    var preview = s.Length > 300 ? s[..300] + "..." : s;
-    Console.WriteLine($"--- {k} ({s.Length} chars) ---");
-    Console.WriteLine($"  {preview}\n");
-}
-
+Console.WriteLine("\nLibrary roundtrip parity holds after the dedupe/invariant changes.");
 return 0;
