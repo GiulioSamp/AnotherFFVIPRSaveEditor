@@ -321,7 +321,9 @@ public class MainForm : Form
             var baseVal = bs is null ? 0 : baseFn(bs);
             var total = (int)totalBox.Value;
             var prop = typeof(CharacterStats).GetProperty(propName);
-            prop?.SetValue(_selectedCharacter.Stats, total - baseVal);
+            // Never write a negative bonus: the game only ever stores additive bonuses in
+            // the addtional* fields and rejects saves containing negative values.
+            prop?.SetValue(_selectedCharacter.Stats, Math.Max(0, total - baseVal));
         };
 
         _tooltip.SetToolTip(labelCtl, description);
@@ -1088,9 +1090,20 @@ public class MainForm : Form
         }
     }
 
+    // NumericUpDown.ValueChanged does NOT fire while the user is typing — only on arrow
+    // clicks or focus loss. A Ctrl+S menu shortcut doesn't move focus, so a typed-but-not-
+    // committed value would silently miss the save ("my edits didn't stick"). Same for an
+    // in-progress DataGridView cell edit. Flush both before writing.
+    private void CommitPendingEdits()
+    {
+        Validate();             // forces the focused control to validate its typed text
+        _itemsGrid.EndEdit();   // commits any in-progress inventory cell edit
+    }
+
     private void OnSave()
     {
         if (_save is null) return;
+        CommitPendingEdits();
         try
         {
             _save.Save();
@@ -1113,6 +1126,7 @@ public class MainForm : Form
             Filter = "All files|*",
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        CommitPendingEdits();
         try
         {
             _save.Save(dlg.FileName);
@@ -1166,6 +1180,9 @@ public class MainForm : Form
             var prop = typeof(CharacterStats).GetProperty(propName);
             var bonus = prop is null ? 0 : (int)(prop.GetValue(_selectedCharacter.Stats) ?? 0);
             baseLbl.Text = bs is null ? "—" : baseVal.ToString();
+            // Floor the box at the base value so the user physically can't request a total
+            // below base (which would imply a negative bonus the game rejects).
+            totalBox.Minimum = baseVal;
             totalBox.Value = Math.Clamp(baseVal + bonus, (int)totalBox.Minimum, (int)totalBox.Maximum);
         }
 
