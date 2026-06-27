@@ -3,7 +3,8 @@ namespace Ffvi.SaveTool.Data;
 public static class VeldtFormations
 {
     // Formation names by index, in the order they appear in the
-    // mapData.beastFieldEncountExchangeFlags array. Source: KiameV/final-fantasy-vi-save-editor, ui/forms/editors/veldt.go.
+    // mapData.beastFieldEncountExchangeFlags array.
+    //Thanks theradiostar for the list of names!
     public static readonly IReadOnlyList<string> Names =
     [
         "Hornet, Foper, Foper, Hornet, Foper",
@@ -110,7 +111,7 @@ public static class VeldtFormations
         "Gobbledygook, Gobbledygook, Gobbledygook, Veil Dancer",
         "Magna Roader",
         "Crawler, Crawler, Crawler, Crawler",
-        "Goetia, Stunner",
+        "Stunner, Goetia, Stunner",
         "General, General",
         "Stunner, Goetia, Stunner, Stunner, Goetia",
         "Trapper, Trapper, Trapper",
@@ -166,7 +167,6 @@ public static class VeldtFormations
         "Land Grillon, Mandrake, Land Grillon",
         "Apocrypha",
         "Apocrypha, Apocrypha, Apocrypha",
-        "Misfit, Apocrypha, Misfit",
         "Brainpan, Brainpan, Misfit, Apocrypha",
         "Sky Armor, Spitfire",
         "Ninja, Ninja",
