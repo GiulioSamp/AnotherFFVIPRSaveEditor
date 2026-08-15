@@ -1,11 +1,14 @@
 namespace Ffvi.SaveTool.Gui;
 
-// Reusable tab system built from a Panel strip of buttons and a content Panel that swaps
-// the active tab's child panel. Replaces the broken WinForms TabControl on Win11 themes.
+// Reusable tab system built from a button strip and a content Panel that swaps the active
+// tab's child panel. Replaces the broken WinForms TabControl on Win11 themes.
 // Used at both top level and nested inside the Characters/Skills tabs.
+//
+// The strip is a FlowLayoutPanel of AutoSize buttons rather than literal pixel coordinates,
+// so button/strip sizes track real font metrics and don't clip at higher DPI.
 public class TabSet
 {
-    public Panel Strip { get; }
+    public FlowLayoutPanel Strip { get; }
     public Panel Content { get; }
     public IReadOnlyDictionary<string, Panel> Panels => _panels;
     public IReadOnlyDictionary<string, Button> Buttons => _buttons;
@@ -14,17 +17,24 @@ public class TabSet
     private readonly Dictionary<string, Button> _buttons = new();
     private readonly int _buttonWidth;
     private readonly int _buttonHeight;
-    private readonly int _buttonTop;
     private readonly int _buttonSpacing;
     private readonly float _fontSize;
 
     public TabSet(int stripHeight, int buttonWidth, int buttonHeight, int buttonTop, int buttonSpacing, float fontSize)
     {
-        Strip = new Panel { Dock = DockStyle.Top, Height = stripHeight, BackColor = SystemColors.Control };
+        Strip = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = SystemColors.Control,
+            Padding = new Padding(4, buttonTop, 4, 4),
+        };
         Content = new Panel { Dock = DockStyle.Fill };
         _buttonWidth = buttonWidth;
         _buttonHeight = buttonHeight;
-        _buttonTop = buttonTop;
         _buttonSpacing = buttonSpacing;
         _fontSize = fontSize;
     }
@@ -34,13 +44,12 @@ public class TabSet
         var btn = new Button
         {
             Text = name,
-            Width = _buttonWidth,
-            Height = _buttonHeight,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(_buttonWidth, _buttonHeight),
+            Margin = new Padding(0, 0, _buttonSpacing, 0),
             FlatStyle = FlatStyle.Flat,
-            AutoSize = false,
             Font = new Font("Segoe UI", _fontSize),
-            Left = _buttons.Count * (_buttonWidth + _buttonSpacing) + 4,
-            Top = _buttonTop,
             TextAlign = ContentAlignment.MiddleCenter,
             UseVisualStyleBackColor = true,
         };
