@@ -63,7 +63,7 @@ public class MainForm : Form
     public MainForm()
     {
         // This form is hand-built with no Designer-generated InitializeComponent, so it
-        // never had a scale baseline — literal pixel sizes throughout stayed stuck at
+        // never had a scale baseline. Literal pixel sizes throughout stayed stuck at
         // 96 DPI while fonts grew, clipping tab buttons and fields at 150%+ scaling.
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoScaleDimensions = new SizeF(96F, 96F);
@@ -685,8 +685,8 @@ public class MainForm : Form
         // Auto-detect target is identified by job id, not the save's per-slot character id:
         // which physical slot a character lands in depends on Three Scenarios recruitment
         // order, so "Gau's slot" can end up holding another character's data instead. Job
-        // id stays tied to the actual character regardless of slot. Names are out too —
-        // localised and player-editable.
+        // id stays tied to the actual character regardless of slot. Names are out too,
+        // since they're localised and player-editable.
         public int OwnerCharacterId { get; init; }
         public string OwnerEnglishName => CharacterRoster.EnglishNameFor(OwnerCharacterId);
         public int? OwnerJobId => CharacterRoster.ForId(OwnerCharacterId)?.JobId;
@@ -696,8 +696,8 @@ public class MainForm : Form
         public int LastId { get; init; }
         public int Offset { get; init; }
         public IReadOnlyList<(int Id, string Name)> Items { get; init; } = Array.Empty<(int, string)>();
-        // Maps a currently-displayed (possibly filtered) row back to its index in Items —
-        // same pattern as _veldtVisibleIndices, needed because Filter can hide rows.
+        // Maps a currently-displayed (possibly filtered) row back to its index in Items.
+        // Same pattern as _veldtVisibleIndices, needed because Filter can hide rows.
         public List<int> VisibleIndices { get; } = new();
         public CheckedListBox List { get; } = new() { Dock = DockStyle.Fill, CheckOnClick = true };
         public TextBox Filter { get; } = new()
@@ -804,9 +804,20 @@ public class MainForm : Form
     private record SkillOwnerRow(int Id, string Display);
 
     // Auto-detect by job id: reliable regardless of which party slot the character landed
-    // in (see SkillTabState.OwnerJobId).
-    private Character? GetAutoDetectedSkillOwner(SkillTabState s) =>
-        s.OwnerJobId is int jobId ? _save?.UserData.Characters.FirstOrDefault(c => c.JobId == jobId) : null;
+    // in (see SkillTabState.OwnerJobId). Job id alone isn't always unique, though. Mog's
+    // job id (11) is shared with nine NPC moogles that appear as full character entries in
+    // the save, so a plain first-match can land on an NPC instead of Mog. Real playable
+    // characters' abilityList is always populated; these NPC entries' is empty. When more
+    // than one character shares the job id, prefer whichever has ability data.
+    private Character? GetAutoDetectedSkillOwner(SkillTabState s)
+    {
+        if (s.OwnerJobId is not int jobId) return null;
+        var candidates = _save?.UserData.Characters.Where(c => c.JobId == jobId).ToList();
+        if (candidates is null || candidates.Count == 0) return null;
+        return candidates.Count == 1
+            ? candidates[0]
+            : candidates.OrderByDescending(c => c.Abilities.AllAbilities().Count).First();
+    }
 
     private Character? GetSkillOwner(SkillTabState s) =>
         s.ManualOwnerId is int manualId
@@ -866,7 +877,7 @@ public class MainForm : Form
     {
         var owner = GetSkillOwner(s);
         if (owner is null) return;
-        // Always the full ability set, not just what the current filter shows — see the
+        // Always the full ability set, not just what the current filter shows. See the
         // comment above the filter row in BuildSkillTab.
         foreach (var (id, _) in s.Items)
         {
