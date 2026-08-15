@@ -173,6 +173,12 @@ public class MainForm : Form
             FirstId = Blitzes.FirstId, LastId = Blitzes.LastId, Offset = Blitzes.ContentIdOffset,
             Items = Blitzes.All.Select(b => (b.Id, b.Name)).ToList(),
         }));
+        _skillsSubTabs.AddTab("Dance", BuildSkillTab(new SkillTabState
+        {
+            Name = "Dance", OwnerCharacterId = CharacterRoster.MogId,
+            FirstId = Dances.FirstId, LastId = Dances.LastId, Offset = Dances.ContentIdOffset,
+            Items = Dances.All.Select(d => (d.Id, d.Name)).ToList(),
+        }));
         _skillsSubTabs.Show("Rages");
 
         _topTabs.AddTab("Characters", _charSubTabs.BuildPanel());
@@ -653,7 +659,7 @@ public class MainForm : Form
     }
 
     // Generic per-character "skill" tab. Used for Rages (Gau), Bushido (Cyan),
-    // Lores (Strago), Blitzes (Sabin), and potentially Dance (Mog) later.
+    // Lores (Strago), Blitzes (Sabin), and Dance (Mog).
     // Each tab is independent state — they all share the same builder.
     private class SkillTabState
     {
