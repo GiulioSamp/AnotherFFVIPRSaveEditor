@@ -62,6 +62,12 @@ public class MainForm : Form
 
     public MainForm()
     {
+        // This form is hand-built with no Designer-generated InitializeComponent, so it
+        // never had a scale baseline. Literal pixel sizes throughout stayed stuck at
+        // 96 DPI while fonts grew, clipping tab buttons and fields at 150%+ scaling.
+        AutoScaleMode = AutoScaleMode.Dpi;
+        AutoScaleDimensions = new SizeF(96F, 96F);
+
         Text = "FFVI Pixel Remaster — Save Editor";
         Width = 1100;
         Height = 720;
@@ -121,12 +127,30 @@ public class MainForm : Form
         _split = split;
 
         var leftLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Padding = new Padding(6) };
-        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+        // Was a literal 150px absolute row (authored at 96 DPI): fine at 100% scaling, but
+        // the three label+numeric rows inside grow taller at higher DPI/text scaling while
+        // this literal number didn't, so "Steps" got clipped off the bottom. AutoSize lets
+        // the row take exactly what its content needs at whatever DPI is active.
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var partyGroup = new GroupBox { Text = "Party", Dock = DockStyle.Fill };
-        var partyGrid = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Padding = new Padding(8) };
-        partyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        var partyGroup = new GroupBox
+        {
+            Text = "Party", Dock = DockStyle.Fill,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        var partyGrid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Padding = new Padding(8),
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+        partyGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        partyGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        partyGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        // AutoSize, not a literal 80px: at 96 DPI 80px happened to be enough, but "Total
+        // Gil:" was already wrapping to two lines even there, and it only gets worse as
+        // the label's font grows with DPI. Sizing to content avoids wrapping at any DPI.
+        partyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         partyGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         partyGrid.Controls.Add(new Label { Text = "Gil:", Anchor = AnchorStyles.Left, AutoSize = true }, 0, 0);
         partyGrid.Controls.Add(_gilBox, 1, 0);
@@ -658,21 +682,45 @@ public class MainForm : Form
     private class SkillTabState
     {
         public string Name { get; init; } = "";
-        // Owner is identified by save character id, not name: names are localised and
-        // player-editable, so string matching fails on non-English saves.
+        // Auto-detect target is identified by job id, not the save's per-slot character id:
+        // which physical slot a character lands in depends on Three Scenarios recruitment
+        // order, so "Gau's slot" can end up holding another character's data instead. Job
+        // id stays tied to the actual character regardless of slot. Names are out too,
+        // since they're localised and player-editable.
         public int OwnerCharacterId { get; init; }
         public string OwnerEnglishName => CharacterRoster.EnglishNameFor(OwnerCharacterId);
+        public int? OwnerJobId => CharacterRoster.ForId(OwnerCharacterId)?.JobId;
+        // Manual override (from the owner dropdown). Null means "use auto-detect".
+        public int? ManualOwnerId { get; set; }
         public int FirstId { get; init; }
         public int LastId { get; init; }
         public int Offset { get; init; }
         public IReadOnlyList<(int Id, string Name)> Items { get; init; } = Array.Empty<(int, string)>();
+        // Maps a currently-displayed (possibly filtered) row back to its index in Items.
+        // Same pattern as _veldtVisibleIndices, needed because Filter can hide rows.
+        public List<int> VisibleIndices { get; } = new();
         public CheckedListBox List { get; } = new() { Dock = DockStyle.Fill, CheckOnClick = true };
+        public TextBox Filter { get; } = new()
+        {
+            Dock = DockStyle.Fill,
+            PlaceholderText = "Filter by name or id...",
+        };
         public Label Header { get; } = new()
         {
             AutoSize = true,
             Margin = new Padding(10, 10, 10, 6),
             Font = new Font("Segoe UI", 10F),
         };
+        public ComboBox OwnerCombo { get; } = new()
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 260,
+            Margin = new Padding(10, 4, 10, 4),
+        };
+        // Guards OwnerCombo.SelectedValueChanged while we repopulate it programmatically,
+        // separate from the form-wide _suppressEvents flag so combo refreshes never fight
+        // with unrelated in-flight UI updates.
+        public bool SuppressComboEvent;
     }
 
     private readonly Dictionary<string, SkillTabState> _skillTabs = new();
@@ -684,12 +732,54 @@ public class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 5,
             Padding = new Padding(6),
         };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        var ownerRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
+        var ownerLabel = new Label
+        {
+            Text = "Character:",
+            AutoSize = true,
+            Margin = new Padding(10, 8, 4, 4),
+        };
+        s.OwnerCombo.SelectedValueChanged += (_, _) =>
+        {
+            if (s.SuppressComboEvent) return;
+            s.ManualOwnerId = s.OwnerCombo.SelectedValue is int id && id != -1 ? id : null;
+            RefreshSkill(s);
+        };
+        ownerRow.Controls.Add(ownerLabel);
+        ownerRow.Controls.Add(s.OwnerCombo);
+
+        // Filter is display-only: it narrows which rows are shown, but Learn All / Forget
+        // All below still act on every ability regardless of the current filter text, so
+        // typing a filter to find one ability can't accidentally scope away a bulk action.
+        var filterRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+        };
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        filterRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var filterLabel = new Label
+        {
+            Text = "Filter:",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(10, 8, 4, 4),
+        };
+        s.Filter.TextChanged += (_, _) => RefreshSkill(s);
+        filterRow.Controls.Add(filterLabel, 0, 0);
+        filterRow.Controls.Add(s.Filter, 1, 0);
 
         var btnPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
         var learnAll = new Button { Text = "Learn All", AutoSize = true };
@@ -698,21 +788,68 @@ public class MainForm : Form
         forgetAll.Click += (_, _) => SetAllSkill(s, false);
         btnPanel.Controls.AddRange(new Control[] { learnAll, forgetAll });
 
-        foreach (var (id, name) in s.Items)
-            s.List.Items.Add($"{id,4}  {name}");
         s.List.ItemCheck += (_, e) => OnSkillItemChecked(s, e);
 
         layout.Controls.Add(s.Header, 0, 0);
-        layout.Controls.Add(btnPanel, 0, 1);
-        layout.Controls.Add(s.List, 0, 2);
+        layout.Controls.Add(ownerRow, 0, 1);
+        layout.Controls.Add(filterRow, 0, 2);
+        layout.Controls.Add(btnPanel, 0, 3);
+        layout.Controls.Add(s.List, 0, 4);
         page.Controls.Add(layout);
 
         _skillTabs[s.Name] = s;
         return page;
     }
 
-    private Character? GetSkillOwner(int characterId) =>
-        _save?.UserData.Characters.FirstOrDefault(c => c.Id == characterId);
+    private record SkillOwnerRow(int Id, string Display);
+
+    // Auto-detect by job id: reliable regardless of which party slot the character landed
+    // in (see SkillTabState.OwnerJobId). Job id alone isn't always unique, though. Mog's
+    // job id (11) is shared with nine NPC moogles that appear as full character entries in
+    // the save, so a plain first-match can land on an NPC instead of Mog. Real playable
+    // characters' abilityList is always populated; these NPC entries' is empty. When more
+    // than one character shares the job id, prefer whichever has ability data.
+    private Character? GetAutoDetectedSkillOwner(SkillTabState s)
+    {
+        if (s.OwnerJobId is not int jobId) return null;
+        var candidates = _save?.UserData.Characters.Where(c => c.JobId == jobId).ToList();
+        if (candidates is null || candidates.Count == 0) return null;
+        return candidates.Count == 1
+            ? candidates[0]
+            : candidates.OrderByDescending(c => c.Abilities.AllAbilities().Count).First();
+    }
+
+    private Character? GetSkillOwner(SkillTabState s) =>
+        s.ManualOwnerId is int manualId
+            ? _save?.UserData.Characters.FirstOrDefault(c => c.Id == manualId)
+            : GetAutoDetectedSkillOwner(s);
+
+    // Rebuilds the owner dropdown from the current save's characters, labeling the
+    // auto-detect entry with whichever character it currently resolves to so the player can
+    // see (and override) a bad guess.
+    private void PopulateSkillOwnerCombo(SkillTabState s)
+    {
+        if (_save is null)
+        {
+            s.OwnerCombo.Items.Clear();
+            return;
+        }
+
+        var auto = GetAutoDetectedSkillOwner(s);
+        var options = new List<SkillOwnerRow>
+        {
+            new(-1, $"Auto-detect ({(auto is null ? "not found" : DisplayName(auto))})"),
+        };
+        options.AddRange(_save.UserData.Characters.Select(c => new SkillOwnerRow(c.Id, DisplayName(c))));
+
+        s.SuppressComboEvent = true;
+        s.OwnerCombo.DataSource = null;
+        s.OwnerCombo.DisplayMember = "Display";
+        s.OwnerCombo.ValueMember = "Id";
+        s.OwnerCombo.DataSource = options;
+        s.OwnerCombo.SelectedValue = s.ManualOwnerId ?? -1;
+        s.SuppressComboEvent = false;
+    }
 
     private void RefreshExpLabel()
     {
@@ -738,48 +875,63 @@ public class MainForm : Form
 
     private void SetAllSkill(SkillTabState s, bool learned)
     {
-        var owner = GetSkillOwner(s.OwnerCharacterId);
+        var owner = GetSkillOwner(s);
         if (owner is null) return;
-        _suppressEvents = true;
-        for (var i = 0; i < s.List.Items.Count; i++)
+        // Always the full ability set, not just what the current filter shows. See the
+        // comment above the filter row in BuildSkillTab.
+        foreach (var (id, _) in s.Items)
         {
-            s.List.SetItemChecked(i, learned);
-            var id = s.Items[i].Id;
             if (learned) owner.Abilities.LearnSkill(id, s.Offset);
             else owner.Abilities.ForgetSkill(id);
         }
-        _suppressEvents = false;
         RefreshSkill(s);
     }
 
     private void OnSkillItemChecked(SkillTabState s, ItemCheckEventArgs e)
     {
         if (_suppressEvents) return;
-        var owner = GetSkillOwner(s.OwnerCharacterId);
+        var owner = GetSkillOwner(s);
         if (owner is null) { e.NewValue = e.CurrentValue; return; }
-        var id = s.Items[e.Index].Id;
+        if (e.Index < 0 || e.Index >= s.VisibleIndices.Count) return;
+        var id = s.Items[s.VisibleIndices[e.Index]].Id;
         if (e.NewValue == CheckState.Checked) owner.Abilities.LearnSkill(id, s.Offset);
         else owner.Abilities.ForgetSkill(id);
     }
 
     private void RefreshSkill(SkillTabState s)
     {
-        var owner = GetSkillOwner(s.OwnerCharacterId);
+        PopulateSkillOwnerCombo(s);
+        var owner = GetSkillOwner(s);
         _suppressEvents = true;
+        s.List.Items.Clear();
+        s.VisibleIndices.Clear();
         if (owner is null)
         {
-            s.Header.Text = $"{s.Name} is {s.OwnerEnglishName}'s skill. {s.OwnerEnglishName} isn't in this save yet.";
+            s.Header.Text = s.ManualOwnerId is null
+                ? $"{s.Name} is {s.OwnerEnglishName}'s skill. {s.OwnerEnglishName} isn't in this save yet."
+                : $"{s.Name}: selected character isn't in this save.";
             s.List.Enabled = false;
-            for (var i = 0; i < s.List.Items.Count; i++) s.List.SetItemChecked(i, false);
         }
         else
         {
             s.List.Enabled = true;
             var learned = new HashSet<int>(
                 owner.Abilities.LearnedSkillsInRange(s.FirstId, s.LastId).Select(a => a.AbilityId));
-            for (var i = 0; i < s.List.Items.Count; i++)
-                s.List.SetItemChecked(i, learned.Contains(s.Items[i].Id));
-            s.Header.Text = $"{DisplayName(owner)}'s {s.Name}: {learned.Count} / {s.Items.Count} learned.";
+            var filter = s.Filter.Text?.Trim() ?? "";
+            for (var i = 0; i < s.Items.Count; i++)
+            {
+                var (id, name) = s.Items[i];
+                if (filter.Length > 0
+                    && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                    && !id.ToString().Contains(filter, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                s.List.Items.Add($"{id,4}  {name}");
+                s.VisibleIndices.Add(i);
+                s.List.SetItemChecked(s.VisibleIndices.Count - 1, learned.Contains(id));
+            }
+            s.Header.Text = filter.Length > 0
+                ? $"{DisplayName(owner)}'s {s.Name}: {learned.Count} / {s.Items.Count} learned. Showing {s.List.Items.Count} matching \"{filter}\"."
+                : $"{DisplayName(owner)}'s {s.Name}: {learned.Count} / {s.Items.Count} learned.";
         }
         _suppressEvents = false;
     }
