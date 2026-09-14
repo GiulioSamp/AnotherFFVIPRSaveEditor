@@ -356,7 +356,7 @@ public class MainForm : Form
         totalBox.ValueChanged += (_, _) =>
         {
             if (_suppressEvents || _selectedCharacter is null) return;
-            var bs = CharacterBaseStats.ForId(_selectedCharacter.Id);
+            var bs = CharacterBaseStats.ForCharacter(_selectedCharacter.Id, _selectedCharacter.JobId);
             var baseVal = bs is null ? 0 : baseFn(bs);
             var total = (int)totalBox.Value;
             var prop = typeof(CharacterStats).GetProperty(propName);
@@ -875,7 +875,7 @@ public class MainForm : Form
     // against this editor's English labels.
     private static string DisplayName(Character c)
     {
-        var canonical = CharacterRoster.ForId(c.Id)?.EnglishName;
+        var canonical = CharacterRoster.Resolve(c.Id, c.JobId)?.EnglishName;
         return canonical is null || canonical == c.Name ? c.Name : $"{c.Name} ({canonical})";
     }
 
@@ -1432,7 +1432,7 @@ public class MainForm : Form
             kv.Value.Value = Math.Clamp(value, (int)kv.Value.Minimum, (int)kv.Value.Maximum);
         }
 
-        var bs = CharacterBaseStats.ForId(_selectedCharacter.Id);
+        var bs = CharacterBaseStats.ForCharacter(_selectedCharacter.Id, _selectedCharacter.JobId);
         foreach (var (propName, (baseLbl, totalBox, baseFn)) in _totalStats)
         {
             var baseVal = bs is null ? 0 : baseFn(bs);

@@ -39,12 +39,14 @@ public static class CharacterBaseStats
         ["Leo"]    = new(50, 10, 52, 38, 41, 36, 60, 63, 22, 41, 21, 3),
     };
 
-    // Look up by the save's character id, NOT by its `name` field: `name` is localised
-    // (Chinese, Japanese, and so on) and is also editable by the player in-game, so it
-    // cannot be matched against these English keys. See CharacterRoster.
-    public static RawStats? ForId(int characterId)
+    // Look up through CharacterRoster.Resolve, NOT by the save's `name` field: `name` is
+    // localised (Chinese, Japanese and so on) and is editable by the player in-game, so it
+    // cannot be matched against these English keys. Resolve needs the jobId as well as the
+    // id, because ids are roster slots that move between game versions while the job is the
+    // character's actual identity. Passing the id alone showed Cyan's stats for Celes.
+    public static RawStats? ForCharacter(int characterId, int jobId)
     {
-        var entry = CharacterRoster.ForId(characterId);
+        var entry = CharacterRoster.Resolve(characterId, jobId);
         return entry is not null && ByName.TryGetValue(entry.EnglishName, out var s) ? s : null;
     }
 }

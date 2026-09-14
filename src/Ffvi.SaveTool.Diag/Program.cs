@@ -1,58 +1,63 @@
-using System.Text.Json.Nodes;
 using Ffvi.SaveTool;
+using Ffvi.SaveTool.Data;
 
-// Verifies ForgetEverywhere clears an ability from all three places the game records
-// ownership: abilityList skillLevel, abilityDictionary categories, and the ownership
-// order lists. Uses Cure (ability 31 / content 361), which Terra legitimately owns.
-// Operates on a temp copy; the real save is untouched.
+// Verifies character identity resolution after merging the upstream skill-owner work.
+// 1) every character in the local saves still resolves to itself
+// 2) both candidate late-game id layouts resolve correctly (ids move between versions)
+// 3) the skill tab constants still derive the right job
 
+int fail = 0;
+
+Console.WriteLine("=== 1. real saves ===");
 var savesDir = SaveFile.DefaultSaveDirectory();
-string? path = null;
+var seen = new SortedDictionary<int, (string Name, int JobId)>();
 foreach (var f in Directory.GetFiles(savesDir).Where(f => new FileInfo(f).Length > 30000 && !f.EndsWith(".backup")))
-    if (SaveFile.Load(f).SlotId == 1) { path = f; break; }
-if (path is null) { Console.WriteLine("slot 1 not found"); return 1; }
-
-var tmp = Path.Combine(Path.GetTempPath(), "ffvi_forget_test");
-File.Copy(path, tmp, overwrite: true);
-
-const int abilityId = 31, contentId = 361;   // Cure
-
-void Report(string label, SaveFile s)
 {
-    var c = s.UserData.Characters.First(x => x.Id == 1);
-    var inList = c.Abilities.AllAbilities().FirstOrDefault(a => a.AbilityId == abilityId);
-    var dictHits = 0;
-    var dict = JsonNode.Parse(Raw(c, "abilityDictionary"))!.AsObject();
-    var values = dict["values"]!.AsArray();
-    foreach (var v in values)
+    SaveFile save;
+    try { save = SaveFile.Load(f); } catch { continue; }
+    foreach (var c in save.UserData.Characters)
+        if (c.Name != "??????") seen[c.Id] = (c.Name, c.JobId);
+}
+foreach (var (id, v) in seen)
+{
+    var got = CharacterRoster.Resolve(id, v.JobId)?.EnglishName ?? "(null)";
+    if (got != v.Name) { fail++; Console.WriteLine($"  MISMATCH id {id} job {v.JobId}: save '{v.Name}' -> '{got}'"); }
+}
+Console.WriteLine($"  {seen.Count} characters checked, all resolve to their own name: {fail == 0}");
+Console.WriteLine($"  Mog keeps his own stats: Str {CharacterBaseStats.ForCharacter(16, 11)?.Strength}");
+Console.WriteLine($"  NPC moogle gets none:    {CharacterBaseStats.ForCharacter(7, 11)?.Strength.ToString() ?? "none"}");
+
+Console.WriteLine("\n=== 2. late-game layouts ===");
+void Check(string layout, (int Id, int Job, string Expect)[] rows)
+{
+    Console.WriteLine($"  {layout}");
+    foreach (var (id, job, expect) in rows)
     {
-        var cat = JsonNode.Parse(v!.GetValue<string>())!.AsObject();
-        foreach (var e in cat["target"]!.AsArray())
-            if (JsonNode.Parse(e!.GetValue<string>())!.AsObject()["abilityId"]?.GetValue<int>() == abilityId) dictHits++;
+        var got = CharacterRoster.Resolve(id, job)?.EnglishName ?? "(null)";
+        var bs = CharacterBaseStats.ForCharacter(id, job);
+        var ok = got == expect;
+        if (!ok) fail++;
+        Console.WriteLine($"    id {id} job {job,2} expect {expect,-8} -> {got,-8} Str {(bs is null ? "-" : bs.Strength.ToString()),-3} {(ok ? "ok" : "MISMATCH")}");
     }
-    var orderHits = 0;
-    foreach (var key in new[] { "additionOrderOwnedAbilityIds", "sortOrderOwnedAbilityIds" })
-    {
-        var arr = JsonNode.Parse(Raw(c, key))!.AsObject()["target"]!.AsArray();
-        orderHits += arr.Count(n => n?.GetValue<int>() == contentId);
-    }
-    Console.WriteLine($"{label,-22} abilityList skillLevel={inList?.SkillLevel.ToString() ?? "absent"}   dictionary entries={dictHits}   ownership-order entries={orderHits}");
+}
+Check("as reported by the issue (Celes at 22):", [
+    (22, 7, "Celes"), (23, 3, "Cyan"), (24, 17, "??????"), (25, 12, "Gau")]);
+Check("as the reference table assumes:", [
+    (22, 3, "Cyan"), (23, 17, "??????"), (24, 12, "Gau"), (25, 7, "Celes")]);
+
+Console.WriteLine("\n=== 3. skill tab owner constants -> job ===");
+foreach (var (skill, id, who) in new[]
+{
+    ("Rages", CharacterRoster.GauId, "Gau"), ("Bushido", CharacterRoster.CyanId, "Cyan"),
+    ("Lore", CharacterRoster.StragoId, "Strago"), ("Blitz", CharacterRoster.SabinId, "Sabin"),
+    ("Dance", CharacterRoster.MogId, "Mog"),
+})
+{
+    var e = CharacterRoster.ForId(id);
+    var ok = e?.EnglishName == who;
+    if (!ok) fail++;
+    Console.WriteLine($"  {skill,-8} id {id,2} -> {e?.EnglishName,-8} job {e?.JobId,-3} {(ok ? "ok" : "MISMATCH")}");
 }
 
-static string Raw(Character c, string key)
-{
-    var n = c.Node[key];
-    return n is JsonValue jv && jv.TryGetValue<string>(out var s) ? s : n?.ToJsonString() ?? "{\"target\":[]}";
-}
-
-Report("before forget:", SaveFile.Load(tmp));
-
-var save = SaveFile.Load(tmp);
-save.UserData.Characters.First(c => c.Id == 1).Abilities.ForgetSpell(abilityId);
-save.Save(tmp + ".out");
-
-Report("after forget (saved):", SaveFile.Load(tmp + ".out"));
-
-File.Delete(tmp);
-File.Delete(tmp + ".out");
-return 0;
+Console.WriteLine($"\nfailures: {fail}");
+return fail == 0 ? 0 : 1;
