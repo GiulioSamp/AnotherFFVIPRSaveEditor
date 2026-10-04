@@ -10,6 +10,28 @@
     <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, Liberation Mono</FontFamily>
   </Application.Resources>
   <Application.Styles>
-    <FluentTheme />
+    <FluentTheme>
+      <FluentTheme.Palettes>
+        <ColorPaletteResources x:Key="Dark"
+                               RegionColor="#202020"
+                               BaseHigh="#E6E6E6"
+                               BaseMediumHigh="#C8C8C8"
+                               BaseMedium="#9A9A9A"
+                               BaseMediumLow="#6E6E6E"
+                               BaseLow="#3C3C3C"
+                               AltHigh="#202020"
+                               AltMediumHigh="#262626"
+                               AltMedium="#2B2B2B"
+                               AltMediumLow="#2D2D2D"
+                               AltLow="#303030"
+                               ChromeLow="#2B2B2B"
+                               ChromeMediumLow="#2D2D2D"
+                               ChromeMedium="#333333"
+                               ChromeHigh="#4A4A4A"
+                               ChromeAltLow="#C8C8C8"
+                               ListLow="#323232"
+                               ListMedium="#3C3C3C" />
+      </FluentTheme.Palettes>
+    </FluentTheme>
   </Application.Styles>
 </Application>

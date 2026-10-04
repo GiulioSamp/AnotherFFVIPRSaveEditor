@@ -14,7 +14,7 @@
         <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
       </MenuItem>
     </Menu>
-    <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0" BorderBrush="Gray">
+    <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
       <TextBlock Text="{Binding StatusText}" />
     </Border>
     <Grid ColumnDefinitions="240,*" IsEnabled="{Binding IsLoaded}">
