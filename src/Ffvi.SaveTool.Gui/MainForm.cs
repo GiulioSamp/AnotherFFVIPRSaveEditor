@@ -637,7 +637,7 @@ public class MainForm : Form
     private record CommandRow(int Id, string Display);
 
     private static List<CommandRow> AllowedCommandsFor(Character c) =>
-        c.Commands.AllowedCommands()
+        c.Commands.AllowedCommands(c.JobId)
             .Select(cmd => new CommandRow(cmd.Id, $"{cmd.Name} ({cmd.Id})"))
             .ToList();
 

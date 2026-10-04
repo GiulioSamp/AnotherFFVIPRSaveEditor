@@ -31,12 +31,20 @@ public class CharacterCommands
     // Commands that are safe to set on any character regardless of class.
     private static readonly int[] UniversalCommandIds = [4, 1, 2, 3, 5];
 
-    // Commands the character already had at load plus the universal ones, [none] first
-    // then by name.
-    public IReadOnlyList<Data.CommandInfo> AllowedCommands()
+    // Commands a character (by job id) owns later in the story and may be given early.
+    // Unverified in-game. Revert is not listed: the game swaps it in during Trance.
+    private static readonly Dictionary<int, int[]> EarlyCommandIds = new()
+    {
+        [1] = [8], // Terra: Trance
+    };
+
+    // Commands the character already had at load plus the universal ones and any early
+    // signature command for the job, [none] first then by name.
+    public IReadOnlyList<Data.CommandInfo> AllowedCommands(int jobId)
     {
         var allowed = new HashSet<int>(UniversalCommandIds);
         foreach (var id in OriginalSlots) allowed.Add(id);
+        if (EarlyCommandIds.TryGetValue(jobId, out var early)) allowed.UnionWith(early);
         return Data.Commands.All
             .Where(cmd => allowed.Contains(cmd.Id))
             .OrderBy(cmd => cmd.Id == Data.Commands.NoneId ? 0 : 1)

@@ -37,7 +37,7 @@ public partial class CommandsViewModel : TabViewModel
                 foreach (var s in Slots) { s.Options = []; s.Selected = null; }
                 return;
             }
-            var allowed = c.Commands.AllowedCommands()
+            var allowed = c.Commands.AllowedCommands(c.JobId)
                 .Select(cmd => new CommandOption(cmd.Id, $"{cmd.Name} ({cmd.Id})"))
                 .ToList();
             foreach (var s in Slots)
