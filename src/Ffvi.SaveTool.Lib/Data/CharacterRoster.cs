@@ -109,6 +109,16 @@ public static class CharacterRoster
     // full character entries in the save. Real playable characters' abilityList is always
     // populated; the NPC entries' is empty. When more than one character shares the job id,
     // prefer whichever has ability data.
+    public static Character? FindOwner(IEnumerable<Character> characters, int ownerRosterId) =>
+        FindByJob(characters, ForId(ownerRosterId)!.JobId);
+
+    // Every save character that could own the skill set: those sharing the owner's job id.
+    public static List<Character> OwnerCandidates(IEnumerable<Character> characters, int ownerRosterId)
+    {
+        var jobId = ForId(ownerRosterId)!.JobId;
+        return characters.Where(c => c.JobId == jobId).ToList();
+    }
+
     public static Character? FindByJob(IEnumerable<Character> characters, int jobId)
     {
         var candidates = characters.Where(c => c.JobId == jobId).ToList();

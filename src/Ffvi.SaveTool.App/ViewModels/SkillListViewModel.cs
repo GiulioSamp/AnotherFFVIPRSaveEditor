@@ -11,17 +11,17 @@ public sealed record SkillOwnerOption(int Id, string Display);
 public partial class SkillListViewModel : TabViewModel
 {
     private readonly string _name;
-    private readonly int _ownerJobId;
+    private readonly int _ownerRosterId;
     private readonly string _ownerEnglishName;
     private readonly int _firstId, _lastId, _offset;
     private readonly IReadOnlyList<(int Id, string Name)> _items;
     private bool _populating;
 
-    public SkillListViewModel(MainViewModel main, string name, int ownerJobId, string ownerEnglishName,
+    public SkillListViewModel(MainViewModel main, string name, int ownerRosterId, string ownerEnglishName,
         int firstId, int lastId, int offset, IEnumerable<(int Id, string Name)> items) : base(main)
     {
         _name = name;
-        _ownerJobId = ownerJobId;
+        _ownerRosterId = ownerRosterId;
         _ownerEnglishName = ownerEnglishName;
         _firstId = firstId;
         _lastId = lastId;
@@ -46,7 +46,7 @@ public partial class SkillListViewModel : TabViewModel
     protected override void OnSaveChanged() => Refresh();
 
     private Character? AutoOwner() =>
-        Save is null ? null : CharacterRoster.FindByJob(Save.UserData.Characters, _ownerJobId);
+        Save is null ? null : CharacterRoster.FindOwner(Save.UserData.Characters, _ownerRosterId);
 
     private Character? GetOwner() => ManualOwnerId is int id
         ? Save?.UserData.Characters.FirstOrDefault(c => c.Id == id)
@@ -61,7 +61,7 @@ public partial class SkillListViewModel : TabViewModel
         {
             var auto = AutoOwner();
             Owners.Add(new(-1, $"Auto-detect ({(auto is null ? "not found" : MainViewModel.DisplayName(auto))})"));
-            foreach (var c in Save.UserData.Characters) Owners.Add(new(c.Id, MainViewModel.DisplayName(c)));
+            foreach (var c in CharacterRoster.OwnerCandidates(Save.UserData.Characters, _ownerRosterId)) Owners.Add(new(c.Id, MainViewModel.DisplayName(c)));
         }
         SelectedOwner = Owners.FirstOrDefault(o => o.Id == (manual ?? -1));
         _populating = false;
