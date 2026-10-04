@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.CharactersView"
+             x:DataType="vm:CharactersViewModel">
+  <TabControl>
+    <TabItem Header="Stats"><ContentControl Content="{Binding Stats}" /></TabItem>
+    <TabItem Header="Magic"><ContentControl Content="{Binding Magic}" /></TabItem>
+    <TabItem Header="Equipment"><ContentControl Content="{Binding Equipment}" /></TabItem>
+    <TabItem Header="Commands"><ContentControl Content="{Binding Commands}" /></TabItem>
+  </TabControl>
+</UserControl>

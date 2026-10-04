@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.StatsView"
+             x:DataType="vm:StatsViewModel">
+  <UserControl.Styles>
+    <Style Selector="TextBlock.warn">
+      <Setter Property="Foreground" Value="#D13438" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="HeaderedContentControl">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <StackPanel Spacing="6">
+            <TextBlock Text="{TemplateBinding Header}" FontWeight="SemiBold" />
+            <Border BorderThickness="1" CornerRadius="4" Padding="10"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+              <ContentPresenter Content="{TemplateBinding Content}" />
+            </Border>
+          </StackPanel>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.Resources>
+    <DataTemplate x:Key="BonusRow" x:DataType="vm:StatRow">
+      <Grid ColumnDefinitions="140,120" Margin="0,2" ToolTip.Tip="{Binding Description}">
+        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+        <NumericUpDown Grid.Column="1" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                       Value="{Binding Value}" IsEnabled="{Binding IsEnabled}"
+                       FormatString="0" ToolTip.Tip="{Binding Description}" />
+      </Grid>
+    </DataTemplate>
+    <DataTemplate x:Key="TotalRow" x:DataType="vm:StatRow">
+      <Grid ColumnDefinitions="140,70,120" Margin="0,2" ToolTip.Tip="{Binding Description}">
+        <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="1" Text="{Binding BaseText}" Opacity="0.6" VerticalAlignment="Center" />
+        <NumericUpDown Grid.Column="2" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                       Value="{Binding Value}" IsEnabled="{Binding IsEnabled}"
+                       FormatString="0" ToolTip.Tip="{Binding Description}" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <ScrollViewer>
+    <StackPanel Margin="12" Spacing="12" MaxWidth="720" HorizontalAlignment="Left">
+      <TextBlock TextWrapping="Wrap" FontStyle="Italic" Opacity="0.6"
+                 Text="Note: the in-game status screen also adds equipment modifiers (weapons, relics, armor) on top of what you set here. &quot;Total&quot; below = class base + permanent bonus only. If a character wears a +5 Evasion relic, the game will show 5 more Evasion than this editor." />
+
+      <HeaderedContentControl Header="Vitals (level-dependent — base computed by game)">
+        <ItemsControl ItemsSource="{Binding Vitals}" ItemTemplate="{StaticResource BonusRow}" />
+      </HeaderedContentControl>
+
+      <TextBlock TextWrapping="Wrap" Text="{Binding ExpText}" Classes.warn="{Binding ExpMismatch}" Opacity="0.6" />
+
+      <HeaderedContentControl Header="Core Stats (edit Total)">
+        <StackPanel>
+          <Grid ColumnDefinitions="140,70,120">
+            <TextBlock Text="Stat" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="1" Text="Base" FontWeight="SemiBold" Opacity="0.6" />
+            <TextBlock Grid.Column="2" Text="Total" FontWeight="SemiBold" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding CoreStats}" ItemTemplate="{StaticResource TotalRow}" />
+        </StackPanel>
+      </HeaderedContentControl>
+
+      <HeaderedContentControl Header="Combat (edit Total)">
+        <StackPanel>
+          <Grid ColumnDefinitions="140,70,120">
+            <TextBlock Text="Stat" FontWeight="SemiBold" />
+            <TextBlock Grid.Column="1" Text="Base" FontWeight="SemiBold" Opacity="0.6" />
+            <TextBlock Grid.Column="2" Text="Total" FontWeight="SemiBold" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Combat}" ItemTemplate="{StaticResource TotalRow}" />
+        </StackPanel>
+      </HeaderedContentControl>
+
+      <HeaderedContentControl Header="Bonus-only (no documented base)">
+        <ItemsControl ItemsSource="{Binding BonusOnly}" ItemTemplate="{StaticResource BonusRow}" />
+      </HeaderedContentControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+        x:Class="Ffvi.SaveTool.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding Title}" Width="1000" Height="700">
+  <DockPanel>
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="_Open..." Command="{Binding OpenCommand}" InputGesture="Ctrl+O" />
+        <MenuItem Header="_Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" IsEnabled="{Binding IsLoaded}" />
+        <MenuItem Header="Save _As..." Command="{Binding SaveAsCommand}" InputGesture="Ctrl+Shift+S" IsEnabled="{Binding IsLoaded}" />
+        <Separator />
+        <MenuItem Header="E_xit" Command="{Binding ExitCommand}" />
+      </MenuItem>
+    </Menu>
+    <Border DockPanel.Dock="Bottom" Padding="8,4" BorderThickness="0,1,0,0" BorderBrush="Gray">
+      <TextBlock Text="{Binding StatusText}" />
+    </Border>
+    <Grid ColumnDefinitions="240,*" IsEnabled="{Binding IsLoaded}">
+      <DockPanel Margin="8" LastChildFill="True">
+        <StackPanel DockPanel.Dock="Top" Spacing="6">
+          <TextBlock Text="Party" FontWeight="SemiBold" />
+          <TextBlock Text="Gil" />
+          <NumericUpDown Value="{Binding Gil}" Minimum="0" Maximum="9999999" FormatString="N0" />
+          <TextBlock Text="Total Gil" />
+          <NumericUpDown Value="{Binding TotalGil}" Minimum="0" Maximum="99999999" FormatString="N0" />
+          <TextBlock Text="Steps" />
+          <NumericUpDown Value="{Binding Steps}" Minimum="0" Maximum="99999999" FormatString="N0" />
+          <TextBlock Text="Characters" FontWeight="SemiBold" Margin="0,8,0,0" />
+        </StackPanel>
+        <ListBox Margin="0,6,0,0" ItemsSource="{Binding CharacterItems}" SelectedItem="{Binding SelectedItem}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:CharacterItem">
+              <TextBlock Text="{Binding DisplayName}" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+      <TabControl Grid.Column="1" Margin="0,8,8,8">
+        <TabItem Header="Characters"><ContentControl Content="{Binding Characters}" /></TabItem>
+        <TabItem Header="Inventory"><ContentControl Content="{Binding Inventory}" /></TabItem>
+        <TabItem Header="Skills"><ContentControl Content="{Binding Skills}" /></TabItem>
+        <TabItem Header="Espers"><ContentControl Content="{Binding Espers}" /></TabItem>
+        <TabItem Header="Veldt"><ContentControl Content="{Binding Veldt}" /></TabItem>
+      </TabControl>
+    </Grid>
+  </DockPanel>
+</Window>
