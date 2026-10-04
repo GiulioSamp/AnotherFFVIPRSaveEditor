@@ -87,12 +87,6 @@ public class Character
     public void SetTotalStat(TotalStat stat, int total) =>
         Stats.SetBonus(stat, Math.Max(0, total - GetBaseStat(stat)));
 
-    // addtionalMaxHp/Mp hold the level-derived growth (the whole cumulative amount, not just a
-    // bonus), so the real maximum is the class base plus that field. Equipment and esper
-    // bonuses are not modelled, so a save can legitimately hold a current value above this.
-    public int MaxHp => (BaseStats?.Hp ?? 0) + Stats.AdditionalMaxHp;
-    public int MaxMp => (BaseStats?.Mp ?? 0) + Stats.AdditionalMaxMp;
-
     // Level the game will derive from CurrentExp after the next battle.
     public int ImpliedLevel => Data.LevelGrowth.LevelForExp(CurrentExp);
 

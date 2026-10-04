@@ -25,12 +25,11 @@
 
   <UserControl.Resources>
     <DataTemplate x:Key="BonusRow" x:DataType="vm:StatRow">
-      <Grid ColumnDefinitions="140,120,Auto" Margin="0,2" ToolTip.Tip="{Binding Description}">
+      <Grid ColumnDefinitions="140,120" Margin="0,2" ToolTip.Tip="{Binding Description}">
         <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
         <NumericUpDown Grid.Column="1" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
                        Value="{Binding Value}" IsEnabled="{Binding IsEnabled}"
                        FormatString="0" ToolTip.Tip="{Binding Description}" />
-        <TextBlock Grid.Column="2" Text="{Binding TotalText}" Margin="10,0,0,0" Opacity="0.6" VerticalAlignment="Center" />
       </Grid>
     </DataTemplate>
     <DataTemplate x:Key="TotalRow" x:DataType="vm:StatRow">
