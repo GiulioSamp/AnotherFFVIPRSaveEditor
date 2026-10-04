@@ -44,6 +44,15 @@ public class UserData
         set => Node["owendGil"] = value;
     }
 
+    // Total Gil is a cumulative lifetime total that only goes up in-game. Mirror that:
+    // when Gil increases, Total Gil grows by the same delta; when it decreases, it is left.
+    public void SetGil(int newGil)
+    {
+        var oldGil = Gil;
+        Gil = newGil;
+        if (newGil > oldGil) TotalGil += newGil - oldGil;
+    }
+
     public int TotalGil
     {
         get => Node["totalGil"]?.GetValue<int>() ?? 0;

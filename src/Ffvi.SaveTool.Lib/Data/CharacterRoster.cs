@@ -103,4 +103,18 @@ public static class CharacterRoster
     public const int SabinId  = 18; // Blitz
     public const int MogId    = 16; // Dance
     public const int SetzerId = 26; // Slot
+
+    // Finds the character that owns a job-specific skill set (Rages, Dance, ...). Job id alone
+    // isn't always unique: Mog's job id (11) is shared with nine NPC moogles that appear as
+    // full character entries in the save. Real playable characters' abilityList is always
+    // populated; the NPC entries' is empty. When more than one character shares the job id,
+    // prefer whichever has ability data.
+    public static Character? FindByJob(IEnumerable<Character> characters, int jobId)
+    {
+        var candidates = characters.Where(c => c.JobId == jobId).ToList();
+        if (candidates.Count == 0) return null;
+        return candidates.Count == 1
+            ? candidates[0]
+            : candidates.OrderByDescending(c => c.Abilities.AllAbilities().Count).First();
+    }
 }

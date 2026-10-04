@@ -58,6 +58,40 @@ public class Character
         CurrentExp = Data.LevelGrowth.ExpForLevel(level);
     }
 
+    // Null when the character isn't in the base-stat table.
+    public Data.RawStats? BaseStats => Data.CharacterBaseStats.ForCharacter(Id, JobId);
+
+    public int GetBaseStat(TotalStat stat)
+    {
+        var b = BaseStats;
+        if (b is null) return 0;
+        return stat switch
+        {
+            TotalStat.Strength => b.Strength,
+            TotalStat.Stamina => b.Stamina,
+            TotalStat.Speed => b.Speed,
+            TotalStat.Magic => b.Magic,
+            TotalStat.Attack => b.Attack,
+            TotalStat.Defense => b.Defense,
+            TotalStat.MagicDefense => b.MagicDefense,
+            TotalStat.Evasion => b.Evasion,
+            TotalStat.MagicEvasion => b.MagicEvasion,
+            _ => throw new ArgumentOutOfRangeException(nameof(stat)),
+        };
+    }
+
+    public int GetTotalStat(TotalStat stat) => GetBaseStat(stat) + Stats.GetBonus(stat);
+
+    // Never writes a negative bonus: the game only ever stores additive bonuses in the
+    // addtional* fields and rejects saves containing negative values.
+    public void SetTotalStat(TotalStat stat, int total) =>
+        Stats.SetBonus(stat, Math.Max(0, total - GetBaseStat(stat)));
+
+    // Level the game will derive from CurrentExp after the next battle.
+    public int ImpliedLevel => Data.LevelGrowth.LevelForExp(CurrentExp);
+
+    public bool HasLevelExpMismatch => ImpliedLevel != Stats.AdditionalLevel;
+
     internal void Commit()
     {
         Stats.Commit();

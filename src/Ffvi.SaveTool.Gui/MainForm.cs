@@ -22,7 +22,7 @@ public class MainForm : Form
     private readonly NumericUpDown _stepsBox = NumBox(0, 99_999_999);
 
     private readonly Dictionary<string, NumericUpDown> _statBoxes = new();
-    private readonly Dictionary<string, (Label baseLbl, NumericUpDown totalBox, Func<RawStats, int> baseFn)> _totalStats = new();
+    private readonly Dictionary<TotalStat, (Label baseLbl, NumericUpDown totalBox)> _totalStats = new();
     private readonly CheckedListBox _spellList = new() { Dock = DockStyle.Fill, CheckOnClick = true };
     private readonly ToolTip _tooltip = new() { AutoPopDelay = 12000, InitialDelay = 400, ReshowDelay = 200, ShowAlways = true };
     private readonly DataGridView _itemsGrid = new()
@@ -254,19 +254,19 @@ public class MainForm : Form
 
         stack.Controls.Add(BuildTotalStatGroup("Core Stats (edit Total)",
         [
-            ("Strength",      "AdditionalPower",            s => s.Strength,     0, 255, "Physical damage stat. Effective cap is 128 even though it can be raised higher. Doubled and added to Attack in the damage formula."),
-            ("Stamina",       "AdditionalVitality",         s => s.Stamina,      0, 255, "Resists Death attacks. Increases Regen heal, Poison/Sap damage taken, Tintinnabulum step-healing."),
-            ("Speed",         "AdditionalAgility",          s => s.Speed,        0, 255, "Fills the ATB gauge faster. +20 baseline plus Haste/Slow effects."),
-            ("Magic",         "AdditionalMagic",            s => s.Magic,        0, 255, "Magic Power. Increases magical damage. No 128 cap, unlike Strength. Sabin's Blitzes use this too."),
+            ("Strength",      TotalStat.Strength,      0, 255, "Physical damage stat. Effective cap is 128 even though it can be raised higher. Doubled and added to Attack in the damage formula."),
+            ("Stamina",       TotalStat.Stamina,       0, 255, "Resists Death attacks. Increases Regen heal, Poison/Sap damage taken, Tintinnabulum step-healing."),
+            ("Speed",         TotalStat.Speed,         0, 255, "Fills the ATB gauge faster. +20 baseline plus Haste/Slow effects."),
+            ("Magic",         TotalStat.Magic,         0, 255, "Magic Power. Increases magical damage. No 128 cap, unlike Strength. Sabin's Blitzes use this too."),
         ]));
 
         stack.Controls.Add(BuildTotalStatGroup("Combat (edit Total)",
         [
-            ("Attack",        "AdditionalAttack",           s => s.Attack,       0, 255, "Battle Power (weapon-based). Added to (Strength x 2) for physical damage. Normally only changed by weapons."),
-            ("Defense",       "AdditionalDefence",          s => s.Defense,      0, 255, "Reduces physical damage. Formula: damage * (255 - Defense) / 256 + 1."),
-            ("Magic Defense", "AdditionalMagicDefense",     s => s.MagicDefense, 0, 255, "Reduces magical damage. Same formula as Defense."),
-            ("Evasion",       "AdditionalEvasionRate",      s => s.Evasion,      0, 255, "Physical block %. Block value = (255 - Evasion x 2) + 1."),
-            ("Magic Evasion", "AdditionalMagicEvasionRate", s => s.MagicEvasion, 0, 255, "Magic block %. Same formula as Evasion."),
+            ("Attack",        TotalStat.Attack,        0, 255, "Battle Power (weapon-based). Added to (Strength x 2) for physical damage. Normally only changed by weapons."),
+            ("Defense",       TotalStat.Defense,       0, 255, "Reduces physical damage. Formula: damage * (255 - Defense) / 256 + 1."),
+            ("Magic Defense", TotalStat.MagicDefense,  0, 255, "Reduces magical damage. Same formula as Defense."),
+            ("Evasion",       TotalStat.Evasion,       0, 255, "Physical block %. Block value = (255 - Evasion x 2) + 1."),
+            ("Magic Evasion", TotalStat.MagicEvasion,  0, 255, "Magic block %. Same formula as Evasion."),
         ]));
 
         stack.Controls.Add(BuildStatGroup("Bonus-only (no documented base)",
@@ -310,7 +310,7 @@ public class MainForm : Form
         return group;
     }
 
-    private GroupBox BuildTotalStatGroup(string title, (string label, string propName, Func<RawStats, int> baseFn, int min, int max, string description)[] stats)
+    private GroupBox BuildTotalStatGroup(string title, (string label, TotalStat stat, int min, int max, string description)[] stats)
     {
         var group = new GroupBox
         {
@@ -337,15 +337,15 @@ public class MainForm : Form
         grid.Controls.Add(new Label { Text = "Base", AutoSize = true, Font = new Font(Font, FontStyle.Bold), ForeColor = SystemColors.GrayText, Margin = new Padding(5) });
         grid.Controls.Add(new Label { Text = "Total", AutoSize = true, Font = new Font(Font, FontStyle.Bold), Margin = new Padding(5) });
 
-        foreach (var (label, propName, baseFn, min, max, description) in stats)
-            AddTotalStatRow(grid, label, propName, baseFn, min, max, description);
+        foreach (var (label, stat, min, max, description) in stats)
+            AddTotalStatRow(grid, label, stat, min, max, description);
 
         group.Controls.Add(grid);
         return group;
     }
 
-    private void AddTotalStatRow(TableLayoutPanel grid, string label, string propName,
-        Func<RawStats, int> baseFn, int min, int max, string description)
+    private void AddTotalStatRow(TableLayoutPanel grid, string label, TotalStat stat,
+        int min, int max, string description)
     {
         var labelCtl = new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(5) };
         var baseLabel = new Label { Text = "—", AutoSize = true, ForeColor = SystemColors.GrayText, Anchor = AnchorStyles.Left, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(5) };
@@ -356,18 +356,12 @@ public class MainForm : Form
         totalBox.ValueChanged += (_, _) =>
         {
             if (_suppressEvents || _selectedCharacter is null) return;
-            var bs = CharacterBaseStats.ForCharacter(_selectedCharacter.Id, _selectedCharacter.JobId);
-            var baseVal = bs is null ? 0 : baseFn(bs);
-            var total = (int)totalBox.Value;
-            var prop = typeof(CharacterStats).GetProperty(propName);
-            // Never write a negative bonus: the game only ever stores additive bonuses in
-            // the addtional* fields and rejects saves containing negative values.
-            prop?.SetValue(_selectedCharacter.Stats, Math.Max(0, total - baseVal));
+            _selectedCharacter.SetTotalStat(stat, (int)totalBox.Value);
         };
 
         _tooltip.SetToolTip(labelCtl, description);
         _tooltip.SetToolTip(totalBox, description);
-        _totalStats[propName] = (baseLabel, totalBox, baseFn);
+        _totalStats[stat] = (baseLabel, totalBox);
         grid.Controls.Add(labelCtl);
         grid.Controls.Add(baseLabel);
         grid.Controls.Add(totalBox);
@@ -561,9 +555,6 @@ public class MainForm : Form
         else _save.UserData.OwnedEsperIds.Remove(id);
     }
 
-    // Commands that are safe to set on any character regardless of class.
-    private static readonly HashSet<int> UniversalCommandIds = new() { 4, 1, 2, 3, 5 };
-
     private Panel BuildCommandsTab()
     {
         var page = new Panel { Dock = DockStyle.Fill };
@@ -645,17 +636,10 @@ public class MainForm : Form
 
     private record CommandRow(int Id, string Display);
 
-    private static List<CommandRow> AllowedCommandsFor(Character c)
-    {
-        var allowed = new HashSet<int>(UniversalCommandIds);
-        foreach (var id in c.Commands.OriginalSlots) allowed.Add(id);
-        return Commands.All
-            .Where(cmd => allowed.Contains(cmd.Id))
-            .OrderBy(cmd => cmd.Id == Commands.NoneId ? 0 : 1)
-            .ThenBy(cmd => cmd.Name)
+    private static List<CommandRow> AllowedCommandsFor(Character c) =>
+        c.Commands.AllowedCommands()
             .Select(cmd => new CommandRow(cmd.Id, $"{cmd.Name} ({cmd.Id})"))
             .ToList();
-    }
 
     private void RefreshCommands()
     {
@@ -810,20 +794,11 @@ public class MainForm : Form
     private record SkillOwnerRow(int Id, string Display);
 
     // Auto-detect by job id: reliable regardless of which party slot the character landed
-    // in (see SkillTabState.OwnerJobId). Job id alone isn't always unique, though. Mog's
-    // job id (11) is shared with nine NPC moogles that appear as full character entries in
-    // the save, so a plain first-match can land on an NPC instead of Mog. Real playable
-    // characters' abilityList is always populated; these NPC entries' is empty. When more
-    // than one character shares the job id, prefer whichever has ability data.
-    private Character? GetAutoDetectedSkillOwner(SkillTabState s)
-    {
-        if (s.OwnerJobId is not int jobId) return null;
-        var candidates = _save?.UserData.Characters.Where(c => c.JobId == jobId).ToList();
-        if (candidates is null || candidates.Count == 0) return null;
-        return candidates.Count == 1
-            ? candidates[0]
-            : candidates.OrderByDescending(c => c.Abilities.AllAbilities().Count).First();
-    }
+    // in (see SkillTabState.OwnerJobId).
+    private Character? GetAutoDetectedSkillOwner(SkillTabState s) =>
+        _save is not null && s.OwnerJobId is int jobId
+            ? CharacterRoster.FindByJob(_save.UserData.Characters, jobId)
+            : null;
 
     private Character? GetSkillOwner(SkillTabState s) =>
         s.ManualOwnerId is int manualId
@@ -862,12 +837,13 @@ public class MainForm : Form
         if (_selectedCharacter is null) { _expLabel.Text = ""; return; }
         var exp = _selectedCharacter.CurrentExp;
         var lvl = _selectedCharacter.Stats.AdditionalLevel;
-        var implied = LevelGrowth.LevelForExp(exp);
-        var warn = implied == lvl
+        var implied = _selectedCharacter.ImpliedLevel;
+        var mismatch = _selectedCharacter.HasLevelExpMismatch;
+        var warn = !mismatch
             ? ""
             : $"   Warning: this experience total corresponds to level {implied}, so the game will reset the level after the next battle.";
         _expLabel.Text = $"Experience: {exp:N0} (level {lvl} requires {LevelGrowth.ExpForLevel(lvl):N0}).{warn}";
-        _expLabel.ForeColor = implied == lvl ? SystemColors.GrayText : Color.Firebrick;
+        _expLabel.ForeColor = mismatch ? Color.Firebrick : SystemColors.GrayText;
     }
 
     // Saves store the localised (and player-editable) name. Show it as-is, appending the
@@ -1101,7 +1077,7 @@ public class MainForm : Form
             _selectedCharacter.Equipment.SetSlot(slotKey, id);
             // The game validates equipped items against the inventory: if a slot points to an item
             // that isn't owned, the game unequips it on load. So we make sure the new item is in inventory.
-            if (!Equipment.IsEmptyPlaceholder(id)) EnsureInInventory(_save.UserData.NormalInventory, id);
+            _save.UserData.NormalInventory.EnsureOwned(id);
             RefreshInventoryGrid();
         };
         _equipCombos[slotKey] = combo;
@@ -1111,14 +1087,7 @@ public class MainForm : Form
 
     private static IList<ItemRow> ItemDropdownEntries()
     {
-        // Exclude the EmptyPlaceholder ids (93/197/198/199/200): those stacks are the game's
-        // internal tally of empty equipment slots, hidden from the grid entirely — and the
-        // dropdown must not offer them either, or a user could convert a real item row into
-        // a rogue placeholder stack.
-        return Items.Normal
-            .Where(i => i.Category is not ItemCategory.Empty and not ItemCategory.EmptyPlaceholder)
-            .OrderBy(i => i.Category.ToString())
-            .ThenBy(i => i.Name)
+        return Inventory.SelectableItems()
             .Select(i => new ItemRow(i.Id, $"[{i.Category}] {i.Name}"))
             .ToList();
     }
@@ -1141,18 +1110,9 @@ public class MainForm : Form
         var idObj = row.Cells[0].Value;
         var countObj = row.Cells[1].Value;
         if (idObj is not int id) return;
-        if (Equipment.IsEmptyPlaceholder(id)) return; // not offered by the dropdown; belt and braces
         var count = countObj is int c ? c : (int.TryParse(countObj?.ToString(), out var p) ? p : 0);
-        count = Math.Clamp(count, 0, Inventory.MaxStackCount);
-        var inv = _save.UserData.NormalInventory;
-        inv.Set(_inventoryVisibleIndices[e.RowIndex], id, count);
-
-        // If the user picked an item that already exists in another row, merge immediately —
-        // duplicate contentId entries corrupt the save (the game's equipment-count validation
-        // reads per-item totals).
-        if (inv.Stacks.Count(s => s.ItemId == id) > 1)
+        if (_save.UserData.NormalInventory.SetStack(_inventoryVisibleIndices[e.RowIndex], id, count))
         {
-            inv.MergeDuplicates();
             RefreshInventoryGrid();
             SelectInventoryRow(id);
         }
@@ -1164,12 +1124,7 @@ public class MainForm : Form
     private void AddNewInventoryEntry()
     {
         if (_save is null) return;
-        var owned = _save.UserData.NormalInventory.Stacks.Select(s => s.ItemId).ToHashSet();
-        var candidates = Items.Normal
-            .Where(i => i.Category is not ItemCategory.Empty and not ItemCategory.EmptyPlaceholder)
-            .Where(i => !owned.Contains(i.Id))
-            .OrderBy(i => i.Category.ToString())
-            .ThenBy(i => i.Name)
+        var candidates = _save.UserData.NormalInventory.AddableItems()
             .Select(i => new ItemRow(i.Id, $"[{i.Category}] {i.Name}"))
             .ToList();
         if (candidates.Count == 0)
@@ -1240,20 +1195,8 @@ public class MainForm : Form
     private void MaxAllInventory()
     {
         if (_save is null) return;
-        var inv = _save.UserData.NormalInventory;
-        for (var i = 0; i < inv.Stacks.Count; i++)
-        {
-            var s = inv.Stacks[i];
-            if (!Equipment.IsEmptyPlaceholder(s.ItemId))
-                inv.Set(i, s.ItemId, Inventory.MaxStackCount);
-        }
+        _save.UserData.NormalInventory.MaxAll();
         RefreshInventoryGrid();
-    }
-
-    private static void EnsureInInventory(Inventory inv, int itemId)
-    {
-        if (inv.Stacks.Any(s => s.ItemId == itemId)) return;
-        inv.Stacks.Add(new ItemStack(itemId, 1));
     }
 
     // Maps grid row index -> underlying Stacks index. Needed because the game's internal
@@ -1300,18 +1243,14 @@ public class MainForm : Form
         else _selectedCharacter.Abilities.ForgetSpell(spell.Id);
     }
 
-    // Total Gil only goes up in-game (it's a cumulative lifetime total). Mirror that here:
-    // when the user increases Gil, bump Total Gil by the same delta; when they decrease, leave it.
-    // User can still manually edit Total Gil directly.
+    // UserData.SetGil bumps Total Gil when Gil increases. User can still edit Total Gil directly.
     private void OnGilChanged(object? sender, EventArgs e)
     {
         if (_suppressEvents || _save is null) return;
-        var oldGil = _save.UserData.Gil;
-        var newGil = (int)_gilBox.Value;
-        _save.UserData.Gil = newGil;
-        if (newGil > oldGil)
+        var oldTotal = _save.UserData.TotalGil;
+        _save.UserData.SetGil((int)_gilBox.Value);
+        if (_save.UserData.TotalGil != oldTotal)
         {
-            _save.UserData.TotalGil += newGil - oldGil;
             _suppressEvents = true;
             _totalGilBox.Value = Math.Clamp(_save.UserData.TotalGil, _totalGilBox.Minimum, _totalGilBox.Maximum);
             _suppressEvents = false;
@@ -1432,13 +1371,12 @@ public class MainForm : Form
             kv.Value.Value = Math.Clamp(value, (int)kv.Value.Minimum, (int)kv.Value.Maximum);
         }
 
-        var bs = CharacterBaseStats.ForCharacter(_selectedCharacter.Id, _selectedCharacter.JobId);
-        foreach (var (propName, (baseLbl, totalBox, baseFn)) in _totalStats)
+        var hasBase = _selectedCharacter.BaseStats is not null;
+        foreach (var (stat, (baseLbl, totalBox)) in _totalStats)
         {
-            var baseVal = bs is null ? 0 : baseFn(bs);
-            var prop = typeof(CharacterStats).GetProperty(propName);
-            var bonus = prop is null ? 0 : (int)(prop.GetValue(_selectedCharacter.Stats) ?? 0);
-            baseLbl.Text = bs is null ? "—" : baseVal.ToString();
+            var baseVal = _selectedCharacter.GetBaseStat(stat);
+            var bonus = _selectedCharacter.Stats.GetBonus(stat);
+            baseLbl.Text = hasBase ? baseVal.ToString() : "—";
             // Floor the box at the base value so the user physically can't request a total
             // below base (which would imply a negative bonus the game rejects).
             totalBox.Minimum = baseVal;

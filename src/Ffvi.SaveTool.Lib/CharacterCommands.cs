@@ -28,6 +28,22 @@ public class CharacterCommands
         OriginalSlots = loaded.AsReadOnly();
     }
 
+    // Commands that are safe to set on any character regardless of class.
+    private static readonly int[] UniversalCommandIds = [4, 1, 2, 3, 5];
+
+    // Commands the character already had at load plus the universal ones, [none] first
+    // then by name.
+    public IReadOnlyList<Data.CommandInfo> AllowedCommands()
+    {
+        var allowed = new HashSet<int>(UniversalCommandIds);
+        foreach (var id in OriginalSlots) allowed.Add(id);
+        return Data.Commands.All
+            .Where(cmd => allowed.Contains(cmd.Id))
+            .OrderBy(cmd => cmd.Id == Data.Commands.NoneId ? 0 : 1)
+            .ThenBy(cmd => cmd.Name)
+            .ToList();
+    }
+
     public void ResetToOriginal()
     {
         Slots.Clear();
