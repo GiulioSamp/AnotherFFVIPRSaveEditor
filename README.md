@@ -1,10 +1,10 @@
 # FFVI Pixel Remaster Save Editor
 
-A save editor for Final Fantasy VI Pixel Remaster (Steam), written in C# / WinForms.
+A save editor for Final Fantasy VI Pixel Remaster (Steam), written in C# with an Avalonia UI. Runs on Windows and Linux (including Steam Deck).
 
 ## Why this exists
 
-The main community save editor for FFVI Pixel Remaster was [KiameV/final-fantasy-vi-save-editor](https://github.com/KiameV/final-fantasy-vi-save-editor), which the author archived in July 2025. As far as I could find, there is no actively maintained replacement. This project fills that gap by reimplementing the save format pipeline in C# and providing a Windows GUI for editing every commonly modified field.
+The main community save editor for FFVI Pixel Remaster was [KiameV/final-fantasy-vi-save-editor](https://github.com/KiameV/final-fantasy-vi-save-editor), which the author archived in July 2025. As far as I could find, there is no actively maintained replacement. This project fills that gap by reimplementing the save format pipeline in C# and providing a cross-platform GUI for editing every commonly modified field.
 
 ## Features
 
@@ -28,23 +28,23 @@ Not yet supported:
 
 ## Install
 
-Windows 10 or 11. No .NET install required, the executable is self-contained.
+Windows 10 or 11, or Linux x64 (including Steam Deck desktop mode). No .NET install required, the executable is self-contained.
 
-1. Download the latest `Ffvi.SaveTool-YYYYMMDD.zip` from the [Releases](../../releases) page.
+1. Download the latest zip for your platform from the [Releases](../../releases) page: `Ffvi.SaveTool-win-x64-YYYYMMDD.zip` or `Ffvi.SaveTool-linux-x64-YYYYMMDD.zip`.
 2. Unzip anywhere (Desktop, Documents, wherever).
-3. Run `Ffvi.SaveTool.Gui.exe`.
+3. Run `Ffvi.SaveTool.App.exe` (Windows) or `Ffvi.SaveTool.App` (Linux; you may need `chmod +x Ffvi.SaveTool.App` first).
 
 On first launch Windows SmartScreen may warn about an unrecognized app. Click "More info", then "Run anyway". The binary is unsigned, which is normal for hobby projects.
 
 ## Usage
 
-1. Back up your save folder first. Copy `%USERPROFILE%\Documents\My Games\FINAL FANTASY VI PR\Steam\<steam-id>\` somewhere safe.
+1. Locate your save folder. On Windows it is `%USERPROFILE%\Documents\My Games\FINAL FANTASY VI PR\Steam\<steam-id>\`. On Linux (Proton) it is `~/.steam/steam/steamapps/compatdata/1173820/pfx/drive_c/users/steamuser/Documents/My Games/FINAL FANTASY VI PR/Steam/<steam-id>/` (also checked under `~/.local/share/Steam/`). The editor opens its file dialog there by default. The editor backs up each file automatically before saving (see Safety notes), but copying the folder somewhere safe first is still a good habit.
 2. Close the game. Running the game while editing risks file locks, autosaves overwriting your edits, and Steam Cloud syncing stale data.
 3. Recommended: turn off Steam Cloud for FFVI PR during editing. In Steam, right click the game, Properties, untick "Keep game saves in the Steam Cloud". Steam Cloud can revert your local edits at any time. Re-enable when you're done.
-4. Launch `Ffvi.SaveTool.Gui.exe`.
+4. Launch `Ffvi.SaveTool.App`.
 5. File, Open. The dialog defaults to your save folder. Pick a slot file (the larger ones, around 60 KB or more).
 6. Pick a character from the left panel. Use the tabs to edit Stats, Spells, Equipment, Items, Espers.
-7. File, Save.
+7. File, Save. The window title shows `*` while there are unsaved changes, and the editor asks before closing or opening another file if you have any.
 8. Launch the game and load the slot to verify.
 
 ### Identifying save files
@@ -61,7 +61,7 @@ You can also identify files by content. Larger files (50 KB and up) with a `pict
 
 ## Safety notes
 
-- Always keep a backup. The editor does not auto-backup yet.
+- Before overwriting a save, the editor copies the existing file to a backups folder, named `<file>.<yyyyMMdd-HHmmss>`. On Windows this is `%LOCALAPPDATA%\Ffvi.SaveTool\backups`, on Linux `~/.local/share/Ffvi.SaveTool/backups`. If saving fails because the backup could not be made, the original is left untouched.
 - If your edited slot shows as Empty in the game's load menu, the save was rejected. Restore from backup. This usually means a field the editor doesn't yet handle was left in an inconsistent state. Open an issue with the steps you took.
 
 ## How the save format works
@@ -103,23 +103,23 @@ You only need this section if you want to modify the code or build your own rele
 Requirements:
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- Windows (the GUI is WinForms)
 
-Clone and run:
+Clone, run and test:
 
 ```bash
 git clone <repo-url>
-cd ffvi-editor/src/Ffvi.SaveTool.Gui
-dotnet run
+cd ffvi-editor
+dotnet run --project src/Ffvi.SaveTool.App
+dotnet test src/Ffvi.SaveTool.Tests
 ```
 
-To produce a release zip (self-contained single-file exe plus README and LICENSE):
+To produce release zips for Windows and Linux (self-contained single-file executable plus README and LICENSE):
 
 ```powershell
 .\build-release.ps1
 ```
 
-Output is at `publish\Ffvi.SaveTool-YYYYMMDD.zip`.
+Output is at `publish\Ffvi.SaveTool-win-x64-YYYYMMDD.zip` and `publish\Ffvi.SaveTool-linux-x64-YYYYMMDD.zip`.
 
 ### Project layout
 
@@ -127,7 +127,9 @@ Output is at `publish\Ffvi.SaveTool-YYYYMMDD.zip`.
 ffvi-editor/
   src/
     Ffvi.SaveTool.Lib/   Class library (crypto pipeline, JSON model, edit API).
-    Ffvi.SaveTool.Gui/   WinForms editor.
+    Ffvi.SaveTool.App/   Avalonia editor (Windows and Linux).
+    Ffvi.SaveTool.Gui/   Legacy WinForms editor (Windows only).
+    Ffvi.SaveTool.Tests/ xUnit tests.
     Ffvi.SaveTool.Diag/  Small console runner used for inspecting save contents.
     Ffvi.SaveTool.slnx
   build-release.ps1      One-shot release build script.
