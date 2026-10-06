@@ -128,7 +128,6 @@ ffvi-editor/
   src/
     Ffvi.SaveTool.Lib/   Class library (crypto pipeline, JSON model, edit API).
     Ffvi.SaveTool.App/   Avalonia editor (Windows and Linux).
-    Ffvi.SaveTool.Gui/   Legacy WinForms editor (Windows only).
     Ffvi.SaveTool.Tests/ xUnit tests.
     Ffvi.SaveTool.Diag/  Small console runner used for inspecting save contents.
     Ffvi.SaveTool.slnx

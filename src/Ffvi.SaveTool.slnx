@@ -1,7 +1,6 @@
 <Solution>
   <Project Path="Ffvi.SaveTool.App/Ffvi.SaveTool.App.csproj" />
   <Project Path="Ffvi.SaveTool.Diag/Ffvi.SaveTool.Diag.csproj" />
-  <Project Path="Ffvi.SaveTool.Gui/Ffvi.SaveTool.Gui.csproj" />
   <Project Path="Ffvi.SaveTool.Lib/Ffvi.SaveTool.Lib.csproj" />
   <Project Path="Ffvi.SaveTool.Tests/Ffvi.SaveTool.Tests.csproj" />
 </Solution>
