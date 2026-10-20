@@ -1,0 +1,39 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.InventoryView"
+             x:DataType="vm:InventoryViewModel">
+  <DockPanel Margin="12" IsEnabled="{Binding HasSave}">
+    <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBox Width="260" PlaceholderText="Filter items" Text="{Binding Filter}" />
+        <Button Content="Max all to 99" Command="{Binding MaxAllCommand}" />
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <ComboBox Width="320" PlaceholderText="Item to add" ItemsSource="{Binding AddChoices}"
+                  SelectedItem="{Binding SelectedChoice}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:ItemChoice">
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <NumericUpDown Width="120" Minimum="1" Maximum="{Binding MaxCount}" Value="{Binding AddCount}" />
+        <Button Content="Add item" Command="{Binding AddCommand}" />
+      </StackPanel>
+    </StackPanel>
+    <ListBox ItemsSource="{Binding Rows}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:InventoryRow">
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Column="1" Width="120" Minimum="0" Maximum="99" Value="{Binding Count}" />
+            <Button Grid.Column="2" Content="Remove"
+                    Command="{Binding $parent[UserControl].((vm:InventoryViewModel)DataContext).RemoveCommand}"
+                    CommandParameter="{Binding}" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

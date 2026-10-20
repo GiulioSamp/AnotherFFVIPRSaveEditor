@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.MagicView"
+             x:DataType="vm:MagicViewModel">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button Content="Learn All" Command="{Binding LearnAllCommand}" />
+      <Button Content="Forget All" Command="{Binding ForgetAllCommand}" />
+    </StackPanel>
+    <ListBox ItemsSource="{Binding Spells}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:CheckItem">
+          <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Label}" FontFamily="{StaticResource MonoFont}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

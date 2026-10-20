@@ -2,6 +2,9 @@ using System.Text.Json.Nodes;
 
 namespace Ffvi.SaveTool;
 
+// Stats the editor shows as "class base + permanent bonus = total".
+public enum TotalStat { Strength, Stamina, Speed, Magic, Attack, Defense, MagicDefense, Evasion, MagicEvasion }
+
 public class CharacterStats
 {
     public JsonObject Node { get; }
@@ -39,6 +42,37 @@ public class CharacterStats
     // "Ability" in the game's data model = "Magic" in player-facing terms.
     public int AdditionalMagicDefense { get => Get("addtionalAbilityDefense"); set => Set("addtionalAbilityDefense", value); }
     public int AdditionalMagicEvasionRate { get => Get("addtionalAbilityEvasionRate"); set => Set("addtionalAbilityEvasionRate", value); }
+
+    public int GetBonus(TotalStat stat) => stat switch
+    {
+        TotalStat.Strength => AdditionalPower,
+        TotalStat.Stamina => AdditionalVitality,
+        TotalStat.Speed => AdditionalAgility,
+        TotalStat.Magic => AdditionalMagic,
+        TotalStat.Attack => AdditionalAttack,
+        TotalStat.Defense => AdditionalDefence,
+        TotalStat.MagicDefense => AdditionalMagicDefense,
+        TotalStat.Evasion => AdditionalEvasionRate,
+        TotalStat.MagicEvasion => AdditionalMagicEvasionRate,
+        _ => throw new ArgumentOutOfRangeException(nameof(stat)),
+    };
+
+    public void SetBonus(TotalStat stat, int value)
+    {
+        switch (stat)
+        {
+            case TotalStat.Strength: AdditionalPower = value; break;
+            case TotalStat.Stamina: AdditionalVitality = value; break;
+            case TotalStat.Speed: AdditionalAgility = value; break;
+            case TotalStat.Magic: AdditionalMagic = value; break;
+            case TotalStat.Attack: AdditionalAttack = value; break;
+            case TotalStat.Defense: AdditionalDefence = value; break;
+            case TotalStat.MagicDefense: AdditionalMagicDefense = value; break;
+            case TotalStat.Evasion: AdditionalEvasionRate = value; break;
+            case TotalStat.MagicEvasion: AdditionalMagicEvasionRate = value; break;
+            default: throw new ArgumentOutOfRangeException(nameof(stat));
+        }
+    }
 
     internal void Commit() => NestedJson.Rewrap(_characterNode, "parameter", Node);
 }

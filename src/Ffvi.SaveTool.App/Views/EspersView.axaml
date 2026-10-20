@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             xmlns:data="using:Ffvi.SaveTool.Data"
+             x:Class="Ffvi.SaveTool.App.Views.EspersView"
+             x:DataType="vm:EspersViewModel">
+  <DockPanel Margin="12" IsEnabled="{Binding HasSave}">
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <Button Content="Own All" Command="{Binding OwnAllCommand}" />
+      <Button Content="Own None" Command="{Binding OwnNoneCommand}" />
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0"
+                IsEnabled="{Binding HasCharacter}">
+      <TextBlock Text="Equipped on selected character:" VerticalAlignment="Center" />
+      <ComboBox Width="220" ItemsSource="{Binding EquippedChoices}" SelectedItem="{Binding Equipped}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="data:EsperInfo">
+            <TextBlock Text="{Binding Name}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+    </StackPanel>
+    <ListBox ItemsSource="{Binding Owned}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:CheckItem">
+          <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

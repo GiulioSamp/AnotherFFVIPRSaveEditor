@@ -43,6 +43,50 @@ public class Inventory
             Stacks.Add(new ItemStack(itemId, Math.Min(MaxStackCount, count)));
     }
 
+    // Items the user may pick. Excludes the EmptyPlaceholder ids (93/197/198/199/200): those
+    // stacks are the game's internal tally of empty equipment slots, and offering them would
+    // let a user convert a real item row into a rogue placeholder stack.
+    public static IReadOnlyList<Data.ItemInfo> SelectableItems() =>
+        Data.Items.Normal
+            .Where(i => i.Category is not Data.ItemCategory.Empty and not Data.ItemCategory.EmptyPlaceholder)
+            .OrderBy(i => i.Category.ToString())
+            .ThenBy(i => i.Name)
+            .ToList();
+
+    // Selectable items not currently in this inventory.
+    public IReadOnlyList<Data.ItemInfo> AddableItems()
+    {
+        var owned = Stacks.Select(s => s.ItemId).ToHashSet();
+        return SelectableItems().Where(i => !owned.Contains(i.Id)).ToList();
+    }
+
+    // Sets a stack from user input, clamping the count. If the item already exists in another
+    // stack the duplicates are merged immediately (duplicate contentId entries corrupt the
+    // save) and true is returned so the caller can refresh its view. Placeholder ids are ignored.
+    public bool SetStack(int index, int itemId, int count)
+    {
+        if (Equipment.IsEmptyPlaceholder(itemId)) return false;
+        Set(index, itemId, Math.Clamp(count, 0, MaxStackCount));
+        if (Stacks.Count(s => s.ItemId == itemId) <= 1) return false;
+        MergeDuplicates();
+        return true;
+    }
+
+    // Adds one of the item if it isn't owned yet (equipping an item the inventory lacks).
+    public void EnsureOwned(int itemId)
+    {
+        if (Equipment.IsEmptyPlaceholder(itemId) || Stacks.Any(s => s.ItemId == itemId)) return;
+        Stacks.Add(new ItemStack(itemId, 1));
+    }
+
+    // Raises every real stack to MaxStackCount; placeholder stacks are left alone.
+    public void MaxAll()
+    {
+        for (var i = 0; i < Stacks.Count; i++)
+            if (!Equipment.IsEmptyPlaceholder(Stacks[i].ItemId))
+                Stacks[i] = Stacks[i] with { Count = MaxStackCount };
+    }
+
     public void RemoveAt(int index) => Stacks.RemoveAt(index);
 
     public void Clear() => Stacks.Clear();

@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.VeldtView"
+             x:DataType="vm:VeldtViewModel">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8" IsEnabled="{Binding HasVeldt}">
+      <TextBox Width="260" HorizontalAlignment="Left" PlaceholderText="Filter formations" Text="{Binding Filter}" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Mark visible as seen" Command="{Binding MarkVisibleCommand}" />
+        <Button Content="Clear visible" Command="{Binding ClearVisibleCommand}" />
+      </StackPanel>
+    </StackPanel>
+    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" Text="{Binding CountText}" />
+    <ListBox ItemsSource="{Binding Formations}" IsEnabled="{Binding HasVeldt}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:CheckItem">
+          <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

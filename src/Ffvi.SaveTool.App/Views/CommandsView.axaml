@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.CommandsView"
+             x:DataType="vm:CommandsViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="20" Spacing="8"
+                IsEnabled="{Binding SelectedCharacter, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <TextBlock TextWrapping="Wrap" FontStyle="Italic" Opacity="0.7" MaxWidth="600" HorizontalAlignment="Left"
+                 Text="The dropdown is restricted to commands this character already had at load, plus universal-safe commands (Attack, Defend, Items, Row, [none]). Assigning a cross-class command (e.g. Sabin's Blitz to Terra) would otherwise corrupt the save." />
+      <Button Content="Reset to original" Command="{Binding ResetCommand}" />
+      <ItemsControl ItemsSource="{Binding Slots}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:CommandSlot">
+            <Grid ColumnDefinitions="80,*" Margin="0,4">
+              <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:CommandOption">
+                    <TextBlock Text="{Binding Display}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

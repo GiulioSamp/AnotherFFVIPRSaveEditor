@@ -57,6 +57,7 @@ public class SaveFile
 
     public void Save(string outputPath)
     {
+        BackupExisting(outputPath);
         UserData.Commit();
         NestedJson.Rewrap(Top, "userData", UserData.Node);
 
@@ -76,10 +77,40 @@ public class SaveFile
         File.WriteAllBytes(outputPath, framed);
     }
 
+    public static string BackupDirectory { get; } = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ffvi.SaveTool", "backups");
+
+    // Copies an existing target aside before it is overwritten. Throws on failure so the
+    // original is never replaced without a backup.
+    private static void BackupExisting(string path)
+    {
+        if (!File.Exists(path)) return;
+        Directory.CreateDirectory(BackupDirectory);
+        var baseName = System.IO.Path.Combine(BackupDirectory,
+            $"{System.IO.Path.GetFileName(path)}.{DateTime.Now:yyyyMMdd-HHmmss}");
+        var dest = baseName;
+        for (var n = 1; File.Exists(dest); n++) dest = $"{baseName}-{n}";
+        File.Copy(path, dest);
+    }
+
     public static string DefaultSaveDirectory()
     {
-        var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        var steamRoot = System.IO.Path.Combine(docs, "My Games", "FINAL FANTASY VI PR", "Steam");
+        const string gameDir = "My Games/FINAL FANTASY VI PR/Steam";
+        var steamRoot = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "My Games", "FINAL FANTASY VI PR", "Steam");
+
+        if (OperatingSystem.IsLinux())
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            foreach (var steam in new[] { ".steam/steam", ".local/share/Steam" })
+            {
+                var root = System.IO.Path.Combine(home, steam, "steamapps/compatdata/1173820/pfx/drive_c/users/steamuser/Documents", gameDir);
+                if (!Directory.Exists(root)) continue;
+                steamRoot = root;
+                break;
+            }
+        }
+
         if (!Directory.Exists(steamRoot)) return steamRoot;
         var first = Directory.GetDirectories(steamRoot).FirstOrDefault();
         return first ?? steamRoot;

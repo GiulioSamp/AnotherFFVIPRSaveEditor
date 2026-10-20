@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.SkillListView"
+             x:DataType="vm:SkillListViewModel">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="8">
+    <TextBlock Grid.Row="0" Text="{Binding Header}" Margin="4,4,4,8" TextWrapping="Wrap" />
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="4">
+      <TextBlock Text="Character:" VerticalAlignment="Center" />
+      <ComboBox Width="260" ItemsSource="{Binding Owners}" SelectedItem="{Binding SelectedOwner}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:SkillOwnerOption">
+            <TextBlock Text="{Binding Display}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+    </StackPanel>
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="4">
+      <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,8,0" />
+      <TextBox Grid.Column="1" Text="{Binding Filter}" PlaceholderText="Filter by name or id..." />
+    </Grid>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="4">
+      <Button Content="Learn All" Command="{Binding LearnAllCommand}" />
+      <Button Content="Forget All" Command="{Binding ForgetAllCommand}" />
+    </StackPanel>
+    <ListBox Grid.Row="4" ItemsSource="{Binding Rows}" IsEnabled="{Binding HasOwner}" Margin="4">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:CheckItem">
+          <CheckBox IsChecked="{Binding IsChecked}" Content="{Binding Label}" FontFamily="{StaticResource MonoFont}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </Grid>
+</UserControl>

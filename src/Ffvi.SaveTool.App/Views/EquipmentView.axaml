@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Ffvi.SaveTool.App.ViewModels"
+             x:Class="Ffvi.SaveTool.App.Views.EquipmentView"
+             x:DataType="vm:EquipmentViewModel">
+  <ScrollViewer>
+    <ItemsControl Margin="20" ItemsSource="{Binding Slots}"
+                  IsEnabled="{Binding SelectedCharacter, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:EquipSlot">
+          <Grid ColumnDefinitions="120,*" Margin="0,4">
+            <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                      ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:EquipOption">
+                  <TextBlock Text="{Binding Display}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </ScrollViewer>
+</UserControl>
